@@ -1,0 +1,31 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="stylesheet" href="tokens.css"><link rel="stylesheet" href="anim.css">
+<script src="data.js"></script><script src="app.js"></script><script src="cfg.js"></script>
+<title>Источники</title><style>
+.tabs{display:flex;gap:var(--sp-2);padding:0 var(--sp-4) var(--sp-3);overflow-x:auto}
+.it{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4);
+  border-bottom:1px solid var(--outline)}
+.ic{width:36px;height:36px;border-radius:var(--r-s);background:var(--surface-variant);flex:none}
+.dot2{width:8px;height:8px;border-radius:50%;background:#4CD964}
+.dot2.bad{background:var(--error)}
+</style></head><body>
+<div class="appbar"><a class="icon" onclick="App.back()">←</a><h1>Источники</h1>
+  <button class="icon">＋</button></div>
+<div class="tabs" id="f"><button class="chip" aria-selected="true">Установленные</button>
+  <button class="chip">Каталог</button><button class="chip">Обновления 2</button></div>
+<div id="list"></div>
+<script src="nav.js" data-tab="more"></script>
+<script>
+var s=[["MangaHub","Манга","1.4.2",1],["ReadManga","Манга","2.0.1",1],
+["MangaDex","Манга","1.9.0",1],["AniLibria","Аниме","3.1.0",1],
+["AnimeGo","Аниме","1.2.5",0],["RanobeLib","Ранобэ","1.0.8",1]];
+list.innerHTML=s.map(function(x){return '<div class="it"><div class="ic"></div>'+
+ '<div style="flex:1"><div style="font-size:14px">'+x[0]+'</div>'+
+ '<div class="muted">'+x[1]+' · v'+x[2]+(x[3]?'':' · парсер сломан')+'</div></div>'+
+ '<span class="dot2 '+(x[3]?'':'bad')+'"></span>'+
+ '<input type="checkbox" '+(x[3]?'checked':'')+'></div>'}).join('');
+App.chips(f);
+</script><script src="anim.js"></script>
+<script src="auth.js"></script>
+</body></html>

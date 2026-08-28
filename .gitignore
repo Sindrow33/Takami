@@ -1,0 +1,6 @@
+*.bak
+*.log
+.DS_Store
+node_modules/
+.git-credentials*
+backup-*.json
