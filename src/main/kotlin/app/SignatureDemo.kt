@@ -1,49 +1,68 @@
 package app
 
-import core.heal.*
+import core.heal.Signatures
+import core.heal.confirm
+import core.heal.Similarity
+import core.heal.SignatureSearch
+import core.model.ElementSignature
 import core.parse.JsoupParser
 import core.test.CatalogPage
-import java.io.File
+
+private fun line(label: String, v: Double) =
+    println("  ${label.padEnd(38)} ${"%.3f".format(v)}")
 
 fun main() {
-    val p = JsoupParser()
-    val base = p.parse(CatalogPage().html(), "https://example-anime.tv/catalog")
-    val redesign = p.parse(CatalogPage(itemClass = "css-1q7hf2n", titleClass = "css-9klm3a").html(),
-        "https://example-anime.tv/catalog")
-    val recs = p.parse(CatalogPage(withRecommendations = true).html(), "https://example-anime.tv/catalog")
+    val parser = JsoupParser()
+    val base = CatalogPage().html()
 
-    val card = base.select("div.catalog-item").first()
-    val title = card.select(".card-title").first()
-    val sigCard = captureSignature(card)
-    val sigTitle = captureSignature(title)
+    val dom = parser.parse(base, "https://example-anime.tv/catalog")
+    val cards = dom.select("div.catalog-item")
+    println("карточек на базовой странице: ${cards.size}")
 
-    println("подпись карточки: tag=${sigCard.tag} classes=${sigCard.stableClasses} " +
-            "path=${sigCard.tagPath.takeLast(4)} shape=${sigCard.shape}")
-    println("подпись заголовка: tokens=${sigTitle.textTokens.take(4)} depth=${sigTitle.depth}\n")
+    val card = cards.first()
+    val sig = Signatures.capture(card, now = 1L)
 
-    fun probe(label: String, css: String, target: core.model.ElementSignature, dom: core.parse.Dom) {
-        val m = bestMatch(target, dom.select(css), minScore = 0.0)
-        println("%-30s кандидатов=%-4d лучший=%.2f  %s".format(
-            label, dom.select(css).size, m?.second ?: 0.0,
-            when {
-                m == null -> "нет"
-                m.second >= SIG_STRONG -> "сильное совпадение"
-                m.second >= SIG_ACCEPT -> "принимаемо"
-                else -> "ниже порога"
-            }))
+    println("\n=== отпечаток карточки ===")
+    println("  тег           ${sig.tag}")
+    println("  классы        ${sig.stableClasses}")
+    println("  форма         ${sig.shape}")
+    println("  путь          ${sig.tagPath.takeLast(5).joinToString(">")}")
+    println("  соседи        ${sig.neighbourTags}")
+    println("  предки        ${sig.ancestorClasses}")
+    println("  глубина       ${sig.depth}, позиция ${sig.indexInParent}")
+    println("  токенов       ${sig.textTokens.size}")
+
+    println("\n=== сходство ===")
+    line("та же карточка сама с собой", Similarity.score(sig, card))
+    line("соседняя карточка той же страницы", Similarity.score(sig, cards[1]))
+    line("последняя карточка страницы", Similarity.score(sig, cards.last()))
+
+    // редизайн: класс-контейнер заменён на сгенерированный хэш
+    val redesign = base.replace("catalog-item", "css-1q7hf2n")
+    val domR = parser.parse(redesign, "https://example-anime.tv/catalog")
+    val cardR = domR.select("div.css-1q7hf2n").first()
+    line("та же карточка после редизайна", Similarity.score(sig, cardR))
+
+    dom.selectFirst("nav a")?.let { line("ссылка навигации", Similarity.score(sig, it)) }
+    dom.selectFirst("h3")?.let { line("заголовок внутри карточки", Similarity.score(sig, it)) }
+
+    val mixed = parser.parse(CatalogPage(withRecommendations = true).html(),
+                             "https://example-anime.tv/catalog")
+    mixed.selectFirst("div.rec-card")?.let { line("карточка рекомендаций", Similarity.score(sig, it)) }
+
+    println("\n=== поиск после редизайна вслепую ===")
+    val pool = SignatureSearch.pool(domR, sig)
+    println("  кандидатов в пуле: ${pool.size}")
+    val m = SignatureSearch.bestMatch(sig, pool)
+    if (m == null) println("  не найдено") else {
+        println("  балл ${"%.3f".format(m.score)}, второй ${"%.3f".format(m.runnerUp)}, отрыв ${"%.3f".format(m.margin)}")
+        println("  уверенно: ${m.isConfident}")
+        println("  найден: <${m.node.tag} class=\"${m.node.classes.joinToString(" ")}\">")
+        println("  это первая карточка: ${m.node.indexInParent == card.indexInParent}")
     }
 
-    probe("карточка в себе", "div.catalog-item", sigCard, base)
-    probe("карточка после редизайна", "div", sigCard, redesign)
-    probe("карточка среди article", "article", sigCard, redesign)
-    probe("заголовок после редизайна", "h3, .css-9klm3a", sigTitle, redesign)
-    probe("карточка vs рекомендация", "div.rec-card", sigCard, recs)
-    probe("карточка vs навигация", "nav a, .breadcrumbs a", sigCard, base)
-
-    val root = File(System.getProperty("java.io.tmpdir"), "autoheal-sig")
-    root.deleteRecursively()
-    val store = SignatureStore(File(root, "sig"))
-    repeat(3) { store.remember("example-anime.tv", "__item", captureSignature(card)) }
-    val kept = store.book("example-anime.tv").byField["__item"]!!
-    println("\nподтверждений после трёх встреч: ${kept.confirmed}, зрелая=${kept.isMature}")
+    println("\n=== подтверждение зрелости ===")
+    var s: ElementSignature = sig
+    repeat(4) { s = s.confirm(now = 2L) }
+    println("  подтверждений ${s.confirmed}, зрелый: ${s.isMature}")
 }
