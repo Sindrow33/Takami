@@ -1,0 +1,11 @@
+out/
+build.log
+build-*.log
+libs/*.jar
+src.bak.*/
+*.class
+*.jar
+.gradle/
+.idea/
+*.iml
+state/
