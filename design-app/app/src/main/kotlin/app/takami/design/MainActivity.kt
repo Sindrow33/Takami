@@ -21,15 +21,18 @@ class MainActivity : ComponentActivity() {
             var dark by rememberSaveable { mutableStateOf(true) }
             var tab by rememberSaveable { mutableIntStateOf(0) }
             var openId by rememberSaveable { mutableStateOf<Int?>(null) }
+            var route by rememberSaveable { mutableStateOf<String?>(null) }
             val opened = openId?.let { id -> Fake.titles.firstOrNull { it.id == id } }
 
-            BackHandler(enabled = opened != null) { openId = null }
+            BackHandler(enabled = opened != null || route != null) {
+                if (opened != null) openId = null else route = null
+            }
 
             TakamiTheme(dark = dark) {
                 Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
                     bottomBar = {
-                        if (opened == null) {
+                        if (opened == null && route == null) {
                             NavigationBar(
                                 containerColor = MaterialTheme.colorScheme.surfaceContainer
                             ) {
@@ -56,15 +59,27 @@ class MainActivity : ComponentActivity() {
                     ) {
                         when {
                             opened != null -> TitleScreen(opened) { openId = null }
+                            route == "downloads" -> DownloadsScreen { route = null }
+                            route != null -> StubScreen(routeTitle(route!!)) { route = null }
                             tab == 0 -> HomeScreen { openId = it.id }
                             tab == 1 -> LibraryScreen { openId = it.id }
-                            else -> Placeholder(dark) { dark = !dark }
+                            tab == 2 -> CalendarScreen { openId = it.id }
+                            else -> MoreScreen(dark, { dark = it }) { route = it }
                         }
                     }
                 }
             }
         }
     }
+}
+
+private fun routeTitle(r: String) = when (r) {
+    "updates" -> "Обновления"
+    "history" -> "История"
+    "stats" -> "Прогресс"
+    "sources" -> "Источники"
+    "account" -> "Аккаунт"
+    else -> "Экран"
 }
 
 @Composable
