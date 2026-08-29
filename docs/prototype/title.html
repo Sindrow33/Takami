@@ -1,6 +1,7 @@
-<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
+<!DOCTYPE html><html lang="ru" data-theme="dark"><head><meta charset="utf-8"><meta name="theme-color" content="#0F1116">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<link rel="stylesheet" href="tokens.css"><link rel="stylesheet" href="anim.css">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="aurora.css"><link rel="stylesheet" href="anim.css">
 <script src="data.js"></script><script src="app.js"></script><script src="cfg.js"></script>
 <title>Тайтл</title><style>
 .hero{display:flex;gap:var(--sp-4);padding:var(--sp-4)}
@@ -23,9 +24,9 @@
 .ch .dl{font-size:16px;color:var(--on-surface-variant)}
 .ch .dl.done{color:var(--primary)}
 .ch.broken .t{color:var(--error)}
-</style></head><body>
+</style></head><body class="tpl">
 <div class="appbar"><a class="icon" href="index.html">←</a><h1></h1>
-  <button class="icon">⌕</button><button class="icon">⋮</button></div>
+  <button class="icon" aria-label="Поиск">⌕</button><button class="icon" aria-label="Меню">⋮</button></div>
 <div class="hero"><div class="cover" id="cov"></div>
   <div><h2 id="ttl"></h2><div class="muted">Автор · Выходит</div>
   <div class="muted" id="meta"></div>
@@ -33,18 +34,17 @@
 <div class="fmtbar" id="fb"></div>
 <div class="actions"><button class="btn">✚ В библиотеке</button>
   <a class="btn primary" id="cont"></a></div>
-<div class="src"><span>Источник: <b id="srcn"></b></span><span style="flex:1"></span>
-  <button class="chip" onclick="App.sheet(1)">Сменить</button></div>
+<div id="srcbar" class="srcbar"></div>
 <div class="banner" id="warn">Часть глав не найдена у этого источника. Можно мигрировать —
   прогресс сохранится.</div>
 <p class="desc clamp" id="desc" onclick="this.classList.toggle('clamp')"></p>
-<div class="sechead"><h3>Персонажи</h3><a class="chip" id="allch">Все</a></div>
+<div class="sechead" id="sec-chr"><h3>Персонажи</h3><a class="chip" id="allch">Все</a></div>
 <div class="charrail" id="chr"></div>
-<div class="sechead"><h3>Обсуждение</h3><a class="chip" id="allc">Все</a></div>
+<div class="sechead" id="sec-cmt"><h3>Обсуждение</h3><a class="chip" id="allc">Все</a></div>
 <div style="padding:0 var(--sp-4)" id="cmt"></div>
-<div style="padding:var(--sp-2) var(--sp-4) var(--sp-4)">
+<div id="sec-wr" style="padding:var(--sp-2) var(--sp-4) var(--sp-4)">
   <button class="btn" style="width:100%" id="wr">Написать комментарий</button></div>
-<div class="chaps"><h3 id="chh">Главы</h3><div id="list"></div></div>
+<div class="chaps" id="sec-ch"><h3 id="chh">Главы</h3><div id="sp-chaps"></div><div id="list"></div></div>
 <div class="scrim" id="sc" onclick="App.sheet(0)"></div>
 <div class="sheet" id="sh"><h3>Источник</h3>
   <div class="ch"><div class="t">MangaHub · 120 гл.</div><span style="flex:1"></span>
@@ -59,7 +59,6 @@ cov.style.background=fr.bg;
 ttl.textContent=fr.t;
 meta.textContent=DB.typeName[it.type]+' · '+it.count;
 gen.innerHTML=fr.g.map(function(g){return '<span class="chip">'+g+'</span>'}).join('');
-srcn.textContent=it.src;
 warn.style.display=it.broken?'':'none';
 desc.textContent=fr.d;
 fb.innerHTML=["manga","anime","novel"].map(function(k){
@@ -91,6 +90,19 @@ var link='comments.html?id='+it.id;
 allc.href=link;allc.textContent='Все '+DB.comments.length;
 wr.onclick=function(){location.href=link+'&write=1'};
 </script><script src="srcpick.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded',function(){
+  var m=document.getElementById('sp-chaps');
+  if(!m||!m.children.length)return;
+  var l=document.getElementById('list'),h=document.getElementById('chh');
+  if(l)l.style.display='none'; if(h)h.style.display='none';
+  m.addEventListener('click',function(e){
+    var r=e.target.closest&&e.target.closest('.chrow');
+    if(!r||r.classList.contains('off'))return;
+    location.href=App.read(it)+'&ch='+r.dataset.n;
+  });
+});
+</script>
 <script src="migrate.js"></script>
 <script src="hist.js"></script>
 <script src="nav.js" data-tab=""></script>

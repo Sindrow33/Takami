@@ -1,7 +1,7 @@
 (function(){
 const K='cfg';
 const D={
- readerMode:'webtoon', keepScreen:true, volKeys:false, tapZones:true,
+ theme:'dark', eink:false, readerMode:'webtoon', keepScreen:true, volKeys:false, tapZones:true,
  autoSource:true, preferLang:'ru', minChapters:true, wifiOnly:true,
  history:true, spoilers:true, blurNsfw:true,
  notifyRelease:true, quietFrom:23, quietTo:8, groupNotify:true,
@@ -23,3 +23,7 @@ const C={
 if(localStorage.getItem('histOff')===null)localStorage.setItem('histOff',S.history?'0':'1');
 window.Cfg=C;
 })();
+(function(){try{var t=(window.Cfg&&Cfg.get&&Cfg.get('theme'))||'dark';
+document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');
+window.Cfg&&Cfg.on&&Cfg.on('theme',function(v){
+  document.documentElement.setAttribute('data-theme',v==='light'?'light':'dark')});}catch(e){}})();

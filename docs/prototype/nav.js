@@ -19,15 +19,17 @@ function todayLeft(){
 }
 
 const T=[
+ {k:'home',    h:'home.html',     l:'Главная',    i:'⌂'},
  {k:'library', h:'index.html',    l:'Библиотека', i:'▤'},
- {k:'updates', h:'updates.html',  l:'Обновления', i:'↻'},
- {k:'fab',     h:'swipe.html',    l:'',           i:'✦'},
+  {k:'fab',     h:'swipe.html',    l:'',           i:'✦'},
  {k:'calendar',h:'calendar.html', l:'Календарь',  i:'▦'},
  {k:'more',    h:'',              l:'Ещё',        i:'⋯'}
 ];
 const MORE=[
+ {h:'updates.html', l:'Обновления',s:'новые главы и серии'},
  {h:'news.html',    l:'Новости',   s:'анонсы, сезоны, статьи'},
  {h:'history.html', l:'История',   s:'что и когда читали'},
+ {h:'downloads.html',l:'Загрузки',  s:'очередь и офлайн'},
  {h:'sources.html', l:'Источники', s:'парсеры и их состояние'},
  {h:'auth.html',    l:'Аккаунт',   s:'вход и синхронизация'},
  {h:'stats.html',   l:'Прогресс',  s:'серии, статистика, достижения'},

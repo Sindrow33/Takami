@@ -1,4 +1,10 @@
 window.App={
+ cont(){var a=DB.items.filter(function(x){return !x.broken&&x.prog>0&&x.prog<100});
+  var p=null;try{p=JSON.parse(localStorage.getItem('lastRead')||'null')}catch(e){}
+  if(p){var m=a.filter(function(x){return x.id==p.id})[0];if(m)return m}
+  return a[0]||DB.items[0]},
+ mark(it){try{localStorage.setItem('lastRead',JSON.stringify({id:it.id,t:Date.now()}))}catch(e){}},
+
  q:(k,d)=>new URLSearchParams(location.search).get(k)||d,
  item(id){return DB.items.find(x=>x.id==id)||DB.items[0]},
  char(id){return DB.chars.find(x=>x.id==id)||DB.chars[0]},

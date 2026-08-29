@@ -1,0 +1,19 @@
+<!DOCTYPE html><html lang="ru" data-theme="dark"><head><meta charset="utf-8"><meta name="theme-color" content="#0F1116">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="aurora.css"><link rel="stylesheet" href="anim.css">
+<script src="data.js"></script><script src="app.js"></script><script src="cfg.js"></script>
+<title>Загрузки</title></head><body>
+<div class="appbar"><button class="icon" aria-label="Назад" onclick="App.back()">‹</button><h1>Загрузки</h1>
+  <button class="icon" id="pauseAll">⏸</button><button class="icon" id="clean">🗑</button></div>
+<div class="dl-cap"><div class="dl-capbar"><i id="capb"></i></div>
+  <div class="dl-capt"><span id="capt"></span><a href="settings.html">Лимит</a></div></div>
+<div class="tabs" id="f" style="display:flex;gap:8px;padding:0 16px 12px;overflow-x:auto">
+  <button class="chip" aria-selected="true">Все</button><button class="chip">Активные</button>
+  <button class="chip">Готово</button><button class="chip">Ошибки</button></div>
+<div id="q"></div>
+<div class="dl-add"><button class="btn" id="add5">Скачать ещё 5 глав</button></div>
+<script src="downloads.js"></script>
+<script src="nav.js" data-tab=""></script>
+<script src="anim.js"></script>
+</body></html>
