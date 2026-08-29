@@ -60,6 +60,12 @@ class MainActivity : ComponentActivity() {
                         when {
                             opened != null -> TitleScreen(opened) { openId = null }
                             route == "downloads" -> DownloadsScreen { route = null }
+                            route == "history" -> HistoryScreen({ route = null }) {
+                                route = null; openId = it.id
+                            }
+                            route == "stats" -> StatsScreen { route = null }
+                            route == "sources" -> SourcesScreen { route = null }
+                            route == "account" -> AccountScreen { route = null }
                             route != null -> StubScreen(routeTitle(route!!)) { route = null }
                             tab == 0 -> HomeScreen { openId = it.id }
                             tab == 1 -> LibraryScreen { openId = it.id }
