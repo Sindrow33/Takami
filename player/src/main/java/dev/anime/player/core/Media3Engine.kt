@@ -78,6 +78,8 @@ class Media3Engine(context: Context) : PlayerEngine {
 
     override fun setSpeed(speed: Float) { exo.setPlaybackSpeed(speed) }
 
+    override fun setVolume(volume: Float) { exo.volume = volume.coerceIn(0f, 1f) }
+
     override fun addSubtitleTrack(url: String, language: String, mimeType: String) {
         val current = exo.currentMediaItem ?: return
         val sub = MediaItem.SubtitleConfiguration.Builder(Uri.parse(url))

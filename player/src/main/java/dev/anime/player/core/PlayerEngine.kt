@@ -23,5 +23,11 @@ interface PlayerEngine {
     fun seekTo(ms: Long)
     fun setSpeed(speed: Float)
     fun addSubtitleTrack(url: String, language: String, mimeType: String)
+
+    /**
+     * Громкость дорожки оригинала, 0f..1f. Нужна для приглушения ("ducking") звука
+     * ролика поверх которого играет AI-озвучка — см. [dev.anime.player.dub.DubDuckingController].
+     */
+    fun setVolume(volume: Float)
     fun release()
 }
