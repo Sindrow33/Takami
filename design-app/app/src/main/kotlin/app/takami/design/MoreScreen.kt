@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 private data class MoreRow(val route: String, val icon: String, val label: String, val hint: String)
 
 private val rows = listOf(
+    MoreRow("swipe", "✦", "Подбор", "свайпы: что почитать дальше"),
     MoreRow("updates", "↻", "Обновления", "новые главы и серии"),
     MoreRow("downloads", "⤓", "Загрузки", "очередь и офлайн"),
     MoreRow("history", "◷", "История", "что и когда читали"),

@@ -60,6 +60,12 @@ class MainActivity : ComponentActivity() {
                         when {
                             opened != null -> TitleScreen(opened) { openId = null }
                             route == "downloads" -> DownloadsScreen { route = null }
+                            route == "updates" -> UpdatesScreen({ route = null }) {
+                                route = null; openId = it.id
+                            }
+                            route == "swipe" -> SwipeScreen({ route = null }) {
+                                route = null; openId = it.id
+                            }
                             route == "history" -> HistoryScreen({ route = null }) {
                                 route = null; openId = it.id
                             }
