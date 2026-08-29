@@ -1,0 +1,45 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="stylesheet" href="tokens.css"><link rel="stylesheet" href="anim.css">
+<script src="data.js"></script><script src="app.js"></script><script src="cfg.js"></script>
+<title>Обновления</title><style>
+.tabs{display:flex;gap:var(--sp-2);padding:0 var(--sp-4) var(--sp-3);overflow-x:auto}
+.day{padding:var(--sp-4) var(--sp-4) var(--sp-2);font-size:13px;
+  color:var(--on-surface-variant)}
+.u{display:flex;gap:var(--sp-3);align-items:center;padding:var(--sp-2) var(--sp-4);
+  border-bottom:1px solid var(--outline)}
+.u .cv{width:44px;aspect-ratio:2/3;border-radius:var(--r-s);
+  background:var(--surface-variant);flex:none}
+.u .t{font-size:14px;line-height:1.3}
+.u.read{opacity:.45}
+.u .dl{width:36px;height:36px;border-radius:var(--r-full);border:none;background:none;
+  color:var(--on-surface-variant);font-size:16px}
+.u .dl.done{color:var(--primary)}
+</style></head><body>
+<div class="appbar"><h1>Обновления</h1><button class="icon">✓</button>
+  <button class="icon">↻</button></div>
+<div class="tabs" id="f"><button class="chip" aria-selected="true">Всё</button>
+  <button class="chip">Манга</button><button class="chip">Аниме</button>
+  <button class="chip">Ранобэ</button><button class="chip">Скачано</button></div>
+<div id="list"></div>
+<script src="nav.js" data-tab="updates"></script>
+<script>
+var g=[{d:"Сегодня",i:[
+ {id:1,s:"Глава 44 · MangaHub",dl:0,r:0},{id:2,s:"Эпизод 8 · AniLibria · 1080p",dl:1,r:0},
+ {id:3,s:"Глава 6 · RanobeLib",dl:0,r:0}]},
+{d:"Вчера",i:[
+ {id:1,s:"Глава 43 · MangaHub",dl:1,r:1},{id:5,s:"Главы 2–4 · ReadManga",dl:0,r:0},
+ {id:2,s:"Эпизод 7 · AniLibria",dl:1,r:1}]}];
+list.innerHTML=g.map(function(x){return '<div class="day">'+x.d+'</div>'+x.i.map(function(i){
+ var it=App.item(i.id);
+ return '<div class="u '+(i.r?'read':'')+'">'+
+ '<a class="row" style="flex:1;gap:var(--sp-3)" href="'+App.read(it)+'">'+
+ '<div class="cv" style="background:'+it.bg+'"></div><div><div class="t">'+
+ App.frOfItem(it.id).t+'</div><div class="muted">'+i.s+'</div></div></a>'+
+ '<button class="dl '+(i.dl?'done':'')+'">'+(i.dl?'✓':'↓')+'</button></div>'}).join('')}).join('');
+[].forEach.call(document.querySelectorAll('.dl'),function(b){b.onclick=function(){
+ b.textContent='…';setTimeout(function(){b.textContent='✓';b.classList.add('done')},900)}});
+App.chips(f);
+</script><script src="anim.js"></script>
+<script src="auth.js"></script>
+</body></html>

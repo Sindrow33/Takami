@@ -1,0 +1,53 @@
+:root{--ease:cubic-bezier(.2,.8,.2,1);--ease-out:cubic-bezier(.16,1,.3,1);
+  --d-fast:140ms;--d-mid:240ms;--d-slow:420ms}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:none}}
+@keyframes pop{0%{transform:scale(.86);opacity:0}60%{transform:scale(1.03)}100%{transform:scale(1);opacity:1}}
+@keyframes shimmer{from{background-position:-180% 0}to{background-position:180% 0}}
+@keyframes shake{10%,90%{transform:translateX(-2px)}30%,70%{transform:translateX(4px)}50%{transform:translateX(-4px)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes ripple{to{transform:scale(2.6);opacity:0}}
+@keyframes barGrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+
+body{animation:fadeIn var(--d-mid) var(--ease)}
+main,.hist,.cal,.mg,.grid{animation:fadeUp var(--d-slow) var(--ease-out) both}
+.stg>*{animation:fadeUp var(--d-slow) var(--ease-out) both}
+.stg>*:nth-child(1){animation-delay:20ms}.stg>*:nth-child(2){animation-delay:50ms}
+.stg>*:nth-child(3){animation-delay:80ms}.stg>*:nth-child(4){animation-delay:110ms}
+.stg>*:nth-child(5){animation-delay:140ms}.stg>*:nth-child(6){animation-delay:170ms}
+.stg>*:nth-child(7){animation-delay:200ms}.stg>*:nth-child(8){animation-delay:230ms}
+.stg>*:nth-child(n+9){animation-delay:260ms}
+
+button,.card,.h-row,.c-row,.chrow,.sp-src,.g-a{transition:transform var(--d-fast) var(--ease),
+  opacity var(--d-fast) var(--ease),background var(--d-fast) var(--ease),border-color var(--d-fast) var(--ease)}
+button:active,.card:active,.h-row:active,.c-row:active,.chrow:active{transform:scale(.972)}
+.tabbar .tb.on i{animation:pop var(--d-mid) var(--ease-out)}
+.tabbar .tb.on::before{animation:barGrow var(--d-mid) var(--ease-out);transform-origin:center}
+.tabbar .fab:active{transform:scale(.92) rotate(-8deg)}
+.tb-b{animation:pop var(--d-slow) var(--ease-out)}
+
+.rip{position:relative;overflow:hidden}
+.rip>.rp{position:absolute;border-radius:50%;background:currentColor;opacity:.22;
+  transform:scale(0);animation:ripple 520ms var(--ease-out) forwards;pointer-events:none}
+
+.skel,.cover.load{background:linear-gradient(100deg,var(--surface-variant) 30%,#2C323E 50%,var(--surface-variant) 70%);
+  background-size:220% 100%;animation:shimmer 1.25s linear infinite}
+
+.sp-scrim{animation:fadeIn var(--d-fast) var(--ease)}
+.sp-sheet{animation:slideUp var(--d-mid) var(--ease-out)}
+.sp-toast.on{animation:pop var(--d-mid) var(--ease-out)}
+.progress>i,.g-bar>i{transition:width var(--d-slow) var(--ease-out)}
+.g-col i{animation:barGrow var(--d-slow) var(--ease-out) both;transform-origin:bottom}
+.g-col:nth-child(2) i{animation-delay:40ms}.g-col:nth-child(3) i{animation-delay:80ms}
+.g-col:nth-child(4) i{animation-delay:120ms}.g-col:nth-child(5) i{animation-delay:160ms}
+.g-col:nth-child(6) i{animation-delay:200ms}.g-col:nth-child(7) i{animation-delay:240ms}
+.shake{animation:shake 380ms var(--ease)}
+.spin{animation:spin 700ms linear infinite}
+
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{animation-duration:1ms!important;animation-iteration-count:1!important;
+   transition-duration:1ms!important}
+ button:active,.card:active{transform:none}
+}
