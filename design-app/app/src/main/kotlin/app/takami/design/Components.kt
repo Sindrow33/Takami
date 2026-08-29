@@ -133,13 +133,3 @@ fun TitleCard(item: FakeTitle, onClick: () -> Unit = {}) {
         )
     }
 }
-
-/** Плитка быстрого действия с подписью-счётчиком. */
-@Composable
-fun QuickTile(icon: String, label: String, hint: String, onClick: () -> Unit = {}) {
-    AuroraSurface(
-        Modifier.width(0.dp).height(74.dp),
-        level = SurfaceLevel.Subtle,
-        radius = Dim.rM,
-    ) {}
-}

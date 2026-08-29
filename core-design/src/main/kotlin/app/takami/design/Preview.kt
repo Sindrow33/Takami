@@ -25,12 +25,12 @@ private fun cover(a: Long, b: Long = 0xFF141821) =
 
 object Fake {
     val titles = listOf(
-        FakeTitle(1, "Тайтл с длинным названием", Fmt.MANGA, "MangaHub", "Гл. 42 из 120", 35, "12", cover(0xFF3B2A6B)),
-        FakeTitle(2, "Аниме сериал", Fmt.ANIME, "AniLibria", "Эп. 7 · 12:30", 60, "NEW", cover(0xFF123A4B)),
-        FakeTitle(3, "Ранобэ, том 3", Fmt.NOVEL, "RanobeLib", "Гл. 5 · 43%", 43, null, cover(0xFF4B2740)),
-        FakeTitle(4, "Источник недоступен", Fmt.MANGA, "AnimeGo", "Ошибка загрузки", 0, "!", cover(0xFF4A1F1F), broken = true),
-        FakeTitle(5, "Ещё один тайтл", Fmt.MANGA, "MangaDex", "Гл. 1 из 88", 12, null, cover(0xFF1F4636)),
-        FakeTitle(6, "Новинка сезона", Fmt.ANIME, "AnimeGo", "Завершено", 100, null, cover(0xFF4A3A16)),
+        FakeTitle(1, "Тайтл с длинным названием", Fmt.MANGA, "MangaHub", "Гл. 42 из 120", 35, "12", cover = cover(0xFF3B2A6B)),
+        FakeTitle(2, "Аниме сериал", Fmt.ANIME, "AniLibria", "Эп. 7 · 12:30", 60, "NEW", cover = cover(0xFF123A4B)),
+        FakeTitle(3, "Ранобэ, том 3", Fmt.NOVEL, "RanobeLib", "Гл. 5 · 43%", 43, null, cover = cover(0xFF4B2740)),
+        FakeTitle(4, "Источник недоступен", Fmt.MANGA, "AnimeGo", "Ошибка загрузки", 0, "!", broken = true, cover = cover(0xFF4A1F1F)),
+        FakeTitle(5, "Ещё один тайтл", Fmt.MANGA, "MangaDex", "Гл. 1 из 88", 12, null, cover = cover(0xFF1F4636)),
+        FakeTitle(6, "Новинка сезона", Fmt.ANIME, "AnimeGo", "Завершено", 100, null, cover = cover(0xFF4A3A16)),
     )
     val continueItem = titles.first { it.progress in 1..99 }
     fun byFmt(f: Fmt) = titles.filter { it.fmt == f }
