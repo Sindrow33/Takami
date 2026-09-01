@@ -32,6 +32,8 @@ import dev.takami.app.onboarding.OnboardingFlow
 import dev.takami.swipes.SwipesScreen
 import dev.takami.app.settings.SettingsScreen
 import dev.takami.app.ui.components.Tab
+import dev.takami.app.swipes.SwipeDecisions
+import dev.takami.app.swipes.TakamiSwipeSource
 import dev.takami.app.ui.components.TabBar
 import dev.takami.app.ui.theme.Aurora
 import dev.takami.app.ui.theme.TakamiTheme
@@ -79,6 +81,8 @@ private fun MainShell(parser: ParserState) {
      */
     var immersive by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val swipeSource = remember { TakamiSwipeSource(context) }
+    val swipeDecisions = remember { SwipeDecisions(context) }
     LaunchedEffect(immersive) {
         val activity = context as? android.app.Activity ?: return@LaunchedEffect
         activity.requestedOrientation = if (immersive) {
@@ -122,7 +126,10 @@ private fun MainShell(parser: ParserState) {
             when (current) {
                 Tab.Home -> HomeScreen(parserStats)
                 Tab.Library -> LibraryTabs(onImmersive = { immersive = it })
-                Tab.Swipes -> SwipesScreen()
+                Tab.Swipes -> SwipesScreen(
+                    source = swipeSource,
+                    decisions = swipeDecisions,
+                )
                 Tab.Calendar -> CalendarScreen()
                 Tab.Settings -> SettingsScreen()
             }

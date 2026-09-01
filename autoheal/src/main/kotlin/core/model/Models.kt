@@ -8,7 +8,7 @@ import kotlinx.serialization.Transient
  * ===================================================================== */
 
 @Serializable
-enum class MediaKind { VIDEO, MANGA, NOVEL }
+enum class MediaKind { VIDEO, MANGA, NOVEL, NEWS }
 
 /**
  * Профиль описывает ожидания от типа контента: какие поля обязательны,
@@ -54,10 +54,31 @@ data class ContentProfile(
 
         val NOVEL = MANGA.copy(kind = MediaKind.NOVEL)
 
+        /**
+         * Новостная лента.
+         *
+         * Отличается от каталога не оформлением, а контрактом: у
+         * новости нет ни глав, ни серий — единиц под ней не существует
+         * вовсе, поэтому `unitsMin = 0`. Дата важнее обложки: лента без
+         * дат бесполезна, а без картинок читается. Список короче
+         * каталога — главная страница издания отдаёт десятки, не сотни.
+         */
+        val NEWS = ContentProfile(
+            kind = MediaKind.NEWS,
+            requiredFields = setOf("title", "url"),
+            optionalFields = setOf("cover", "date", "summary", "source"),
+            unitNoun = "новость",
+            unitNounPlural = "новости",
+            listingMin = 3,
+            listingMax = 100,
+            unitsMin = 0, unitsMax = 0,
+        )
+
         fun of(kind: MediaKind): ContentProfile = when (kind) {
             MediaKind.VIDEO -> VIDEO
             MediaKind.MANGA -> MANGA
             MediaKind.NOVEL -> NOVEL
+            MediaKind.NEWS -> NEWS
         }
     }
 }

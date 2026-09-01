@@ -191,8 +191,31 @@ private class TreePageSource(
 
     private val chapterOrder = mutableListOf<String>()
 
+    /**
+     * Папка тайтла как документ, пригодный для обхода детей.
+     *
+     * Тонкость, на которой всё и сломалось: `fromTreeUri` возвращает
+     * КОРЕНЬ выданного дерева для любого адреса внутри него. В
+     * `titleTree` лежит адрес папки тайтла, но `fromTreeUri` отдавал
+     * выбранную пользователем папку библиотеки целиком — и страницы
+     * искались не в тайтле, а в корне, где картинок нет. Глава
+     * открывалась пустой при том, что список глав строился верно:
+     * его собирал другой код, обходивший дерево сверху.
+     *
+     * Снаружи это и выглядело как «читалка не работает»: тайтл виден,
+     * глава есть, счётчик `1 / 1`, экран пустой.
+     *
+     * `fromSingleUri` тут не годится — он даёт документ без обхода
+     * детей. Поэтому от корня спускаемся к нужной папке по её адресу.
+     */
+    private fun titleDocument(): DocumentFile? {
+        val root = DocumentFile.fromTreeUri(context, titleTree) ?: return null
+        if (root.uri == titleTree) return root
+        return root.listFiles().firstOrNull { it.isDirectory && it.uri == titleTree } ?: root
+    }
+
     override suspend fun pages(chapterId: String): List<PageRef> {
-        val title = DocumentFile.fromTreeUri(context, titleTree) ?: return emptyList()
+        val title = titleDocument() ?: return emptyList()
         if (chapterOrder.isEmpty()) {
             chapterOrder += title.listFiles().mapNotNull { it.name }.sorted()
         }

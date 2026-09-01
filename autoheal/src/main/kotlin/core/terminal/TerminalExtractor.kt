@@ -34,5 +34,8 @@ class TerminalExtractor(
             core.model.MediaKind.VIDEO -> TerminalExpect.VIDEO
             core.model.MediaKind.MANGA -> TerminalExpect.IMAGES
             core.model.MediaKind.NOVEL -> TerminalExpect.TEXT
+            // Тело новости — такой же текст, как глава ранобэ:
+            // отдельного извлекателя под него не нужно.
+            core.model.MediaKind.NEWS -> TerminalExpect.TEXT
         }
 }
