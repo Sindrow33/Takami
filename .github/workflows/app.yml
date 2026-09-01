@@ -29,8 +29,10 @@ jobs:
         run: gradle :autoheal:test --no-daemon --stacktrace
       - name: Reader unit tests
         run: gradle :reader:engine:testDebugUnitTest --no-daemon --stacktrace
+      - name: Source unit tests
+        run: gradle :source:web:testDebugUnitTest --no-daemon --stacktrace
       - name: Reader modules assemble
-        run: gradle :feature:reader:assembleDebug :reader:ui:assembleDebug :core:design:assembleDebug --no-daemon --stacktrace
+        run: gradle :feature:reader:assembleDebug :reader:ui:assembleDebug :core:design:assembleDebug :source:web:assembleDebug --no-daemon --stacktrace
       - name: App unit tests
         run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
       - name: Build Takami APK
