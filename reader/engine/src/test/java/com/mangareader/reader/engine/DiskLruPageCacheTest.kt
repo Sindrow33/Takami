@@ -21,6 +21,18 @@ class DiskLruPageCacheTest {
     private fun page(uri: String, headers: Map<String, String> = emptyMap()) =
         PageRef(id = uri, index = 0, uri = uri, headers = headers)
 
+    /**
+     * Валидные байты JPEG нужного размера. Кеш отбраковывает всё, что
+     * не похоже на изображение, поэтому тестовые данные обязаны нести
+     * настоящую сигнатуру — иначе тест проверяет отбраковку, а не то,
+     * что заявлено в его названии.
+     */
+    private fun jpegBytes(size: Int = 128) = ByteArray(size) { 0x20 }.also {
+        it[0] = 0xFF.toByte()
+        it[1] = 0xD8.toByte()
+        it[2] = 0xFF.toByte()
+    }
+
     @Test
     fun `один URL с разным Referer — разные записи`() {
         val c = cache()
@@ -40,7 +52,7 @@ class DiskLruPageCacheTest {
         val withReferer = page("https://cdn/p1.jpg", mapOf("Referer" to "https://site/"))
         val withoutReferer = page("https://cdn/p1.jpg")
 
-        c.put(withoutReferer, "403 forbidden".toByteArray())
+        c.put(withoutReferer, jpegBytes())
 
         // Запрос с правильным Referer не должен получить сохранённую заглушку.
         assertNull(
@@ -72,11 +84,11 @@ class DiskLruPageCacheTest {
     fun `сохранённая страница читается обратно`() = runTest {
         val c = cache()
         val p = page("https://cdn/p1.jpg", mapOf("Referer" to "https://site/"))
-        c.put(p, ByteArray(64) { 7 })
+        c.put(p, jpegBytes(size = 128))
 
         val got = c.get(p)
         assertNotNull(got)
-        assertEquals(64, got.length().toInt())
+        assertEquals(128, got.length().toInt())
     }
 
     @Test
@@ -91,7 +103,7 @@ class DiskLruPageCacheTest {
     fun `превышение лимита вытесняет старые записи`() = runTest {
         val c = cache(maxBytes = 300)
         repeat(10) { i ->
-            c.put(page("https://cdn/p$i.jpg"), ByteArray(100) { 1 })
+            c.put(page("https://cdn/p$i.jpg"), jpegBytes(size = 100))
         }
         assertTrue(c.sizeBytes() <= 300, "кеш вырос выше лимита: ${c.sizeBytes()}")
     }
@@ -99,7 +111,7 @@ class DiskLruPageCacheTest {
     @Test
     fun `очистка опустошает кеш`() = runTest {
         val c = cache()
-        c.put(page("https://cdn/p1.jpg"), ByteArray(128))
+        c.put(page("https://cdn/p1.jpg"), jpegBytes(size = 128))
         assertTrue(c.sizeBytes() > 0)
         c.clear()
         assertEquals(0L, c.sizeBytes())
