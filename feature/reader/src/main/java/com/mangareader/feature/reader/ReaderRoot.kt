@@ -165,6 +165,7 @@ fun ReaderRoot(
                 chapterNumber = state.currentChapterNumber,
                 page = state.currentPage + 1,
                 total = state.totalPagesInChapter,
+                onOpenChapters = viewModel::openChapterList,
             )
         }
 
@@ -186,6 +187,15 @@ fun ReaderRoot(
             )
         }
 
+        if (state.chapterListVisible) {
+            ChapterNavSheet(
+                nav = state.chapterNav,
+                currentChapterNumber = state.currentChapterNumber,
+                onGo = viewModel::goToChapter,
+                onClose = viewModel::closeChapterList,
+            )
+        }
+
         if (state.settingsVisible) {
             ReaderSettingsSheet(
                 settings = state.settings,
@@ -197,7 +207,12 @@ fun ReaderRoot(
 }
 
 @Composable
-private fun ReaderTopBar(chapterNumber: Float?, page: Int, total: Int) {
+private fun ReaderTopBar(
+    chapterNumber: Float?,
+    page: Int,
+    total: Int,
+    onOpenChapters: () -> Unit,
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -207,11 +222,18 @@ private fun ReaderTopBar(chapterNumber: Float?, page: Int, total: Int) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
+        // Заголовок главы — он же вход в список глав: так это работает
+        // в эталонной читалке, и это единственное место, откуда можно
+        // уйти на предыдущую главу, не выходя из читалки.
         Text(
-            chapterNumber?.let { "Глава ${formatChapter(it)}" } ?: "Читалка",
+            (chapterNumber?.let { "Глава ${formatChapter(it)}" } ?: "Читалка") + "  ⌄",
             color = Aurora.OnSurface,
             fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(Aurora.RadiusFull))
+                .clickable(onClick = onOpenChapters)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
         )
         Text(
             if (total > 0) "$page / $total" else "",
@@ -478,3 +500,111 @@ private fun TranslationMode.label(): String = when (this) {
 
 internal fun formatChapter(number: Float): String =
     if (number % 1f == 0f) number.toInt().toString() else number.toString()
+
+/**
+ * Переход между главами, не выходя из читалки.
+ *
+ * Лента бесшовна вперёд, но только вперёд и только прокруткой: попасть
+ * в предыдущую главу или перепрыгнуть из середины было нельзя вообще.
+ *
+ * Кнопка неактивна в двух разных случаях — соседа нет и ответ ещё не
+ * пришёл, — и выглядят они одинаково намеренно: нажатие, которое
+ * ничего не делает, хуже кнопки, которая честно ждёт.
+ */
+@Composable
+private fun ChapterNavSheet(
+    nav: ChapterNav,
+    currentChapterNumber: Float?,
+    onGo: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Aurora.ScLowest.copy(alpha = .72f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClose,
+            ),
+    ) {
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = Aurora.RadiusL, topEnd = Aurora.RadiusL))
+                .background(Aurora.SurfaceContainer)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {},
+                )
+                .navigationBarsPadding()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                currentChapterNumber?.let { "Глава ${formatChapter(it)}" } ?: "Главы",
+                color = Aurora.OnSurface,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            ChapterNavRow(
+                label = "Предыдущая глава",
+                targetId = nav.prevId,
+                resolved = nav.resolved,
+                onGo = onGo,
+            )
+            ChapterNavRow(
+                label = "Следующая глава",
+                targetId = nav.nextId,
+                resolved = nav.resolved,
+                onGo = onGo,
+            )
+            Text(
+                "Закрыть",
+                color = Aurora.Acc2,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(Aurora.RadiusFull))
+                    .clickable(onClick = onClose)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChapterNavRow(
+    label: String,
+    targetId: String?,
+    resolved: Boolean,
+    onGo: (String) -> Unit,
+) {
+    val enabled = resolved && targetId != null
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Aurora.RadiusS))
+            .background(Aurora.Sub)
+            .let { if (enabled) it.clickable { onGo(targetId!!) } else it }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            label,
+            color = if (enabled) Aurora.OnSurface else Aurora.OnSurfaceVariant,
+            fontSize = 14.sp,
+        )
+        Text(
+            when {
+                !resolved -> "…"
+                targetId == null -> "нет"
+                else -> "›"
+            },
+            color = Aurora.OnSurfaceVariant,
+            fontSize = 13.sp,
+        )
+    }
+}
