@@ -1,0 +1,74 @@
+name: app
+
+on:
+  push:
+    branches: [ '**' ]
+  pull_request:
+  workflow_dispatch:
+
+# Ветка с открытым PR иначе собиралась дважды (push + pull_request);
+# оставляем только последний запуск на ref.
+concurrency:
+  group: app-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Autoheal unit tests
+        run: gradle :autoheal:test --no-daemon --stacktrace
+      - name: Reader unit tests
+        run: gradle :reader:engine:testDebugUnitTest --no-daemon --stacktrace
+      - name: Source unit tests
+        run: gradle :source:web:testDebugUnitTest --no-daemon --stacktrace
+      - name: Anime unit tests
+        run: gradle :player:testDebugUnitTest :feature:swipes:testDebugUnitTest :feature:cards:testDebugUnitTest --no-daemon --stacktrace
+      - name: Anime modules assemble
+        run: gradle :player:assembleDebug :feature:swipes:assembleDebug :feature:cards:assembleDebug --no-daemon --stacktrace
+      - name: Reader modules assemble
+        run: gradle :feature:reader:assembleDebug :reader:ui:assembleDebug :core:design:assembleDebug :source:web:assembleDebug --no-daemon --stacktrace
+      - name: App unit tests
+        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
+      - name: Build Takami APK
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: APK size
+        run: |
+          echo "### Размер APK" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          du -h app/build/outputs/apk/debug/*.apk | sort -h >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "### Крупнейшее содержимое" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          for apk in app/build/outputs/apk/debug/*.apk; do
+            echo "== $apk"
+            unzip -l "$apk" | sort -k1 -n -r | head -12
+          done >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+      - name: Test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            autoheal/build/reports/tests/test
+            app/build/reports/tests/**
+            reader/engine/build/reports/tests/**
+            player/build/reports/tests/**
+            feature/swipes/build/reports/tests/**
+            feature/cards/build/reports/tests/**
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: takami-app-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

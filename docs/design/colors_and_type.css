@@ -1,0 +1,162 @@
+/* ============================================================
+   Takami — Aurora Design Tokens
+   Извлечено из core-design/Theme.kt + docs/prototype/{aurora,tokens,anim}.css
+   Dark-first. Light — через html[data-theme="light"].
+   ============================================================ */
+
+:root {
+  /* ---------- Акценты ---------- */
+  --acc:            #7C5CFF;   /* Violet — primary */
+  --acc-dim:        #5B3BE8;   /* VioletDim — pressed / light primary */
+  --acc-2:          #A78BFA;   /* VioletSoft — soft */
+  --acc-3:          #00E5FF;   /* Cyan — secondary */
+  --acc-blue:       #0095FF;   /* Blue — tertiary */
+  --acc-grad-a:     #8E72FF;   /* FAB / кнопки — верхний стоп */
+  --acc-grad-b:     #5B3BE8;   /* FAB / кнопки — нижний стоп */
+
+  --primary:        var(--acc);
+  --on-primary:     #FFFFFF;
+
+  /* ---------- Семафор ---------- */
+  --ok:             #3DD68C;
+  --warn:           #FFB020;
+  --error:          #F87171;   /* Theme.kt */
+  --error-strong:   #FF5C5C;   /* tokens.css */
+  --err-cont:       #7F1D1D;
+  --on-err-cont:    #FECACA;
+
+  /* ---------- Поверхности (dark) ---------- */
+  --surface:            #0F1116;
+  --surface-container:  #1A1D23;
+  --surface-variant:    #252931;
+  --sc-lowest:          #0A0C0F;
+  --sc-low:             #13151A;
+  --sc-high:            #24272E;
+  --sc-highest:         #2F3239;
+
+  /* ---------- Текст (dark) ---------- */
+  --on-surface:          #FFFFFF;
+  --on-surface-variant:  #94A3B8;
+
+  /* ---------- Обводки (dark) ---------- */
+  --outline:      #334155;
+  --outline-var:  #1E293B;
+
+  /* ---------- Стекло / субстраты ---------- */
+  --sub:      rgba(255,255,255,.05);
+  --glass:    rgba(255,255,255,.22);
+  --brd:      rgba(255,255,255,.08);
+  --brd-em:   rgba(255,255,255,.16);
+
+  /* ---------- Атмосфера ---------- */
+  --grad:  linear-gradient(160deg, #1E1B4B, #0F1116);
+  --glow:  0 0 24px rgba(124,92,255,.38);
+  --shadow-md: 0 8px 24px rgba(0,0,0,.35);
+  --shadow-fab: 0 8px 24px rgba(91,59,232,.55), 0 0 24px rgba(124,92,255,.38);
+
+  /* ---------- Spacing (Dim.s*) ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* ---------- Радиусы (Dim.r*) ---------- */
+  --r-s:    8px;
+  --r-m:    12px;
+  --r-l:    20px;
+  --r-full: 999px;
+
+  /* ---------- Motion ---------- */
+  --ease:      cubic-bezier(.2, .8, .2, 1);
+  --ease-out:  cubic-bezier(.16, 1, .3, 1);
+  --d-fast:    140ms;
+  --d-mid:     240ms;
+  --d-slow:    420ms;
+  --t-fast:    120ms;
+  --t-med:     220ms;
+
+  /* ---------- Тип-шкала (Asian-style stack) ----------
+     Основа: Zen Kaku Gothic Antique — гуманистический японский готик,
+     мягкие модуляции штриха, отличная кириллица через fallback.
+     Носит нейтральный «манга-book» тон, без стилизации под каллиграфию. */
+  --font-sans: "Zen Kaku Gothic Antique", "Noto Sans JP", "Hiragino Kaku Gothic ProN",
+               "Yu Gothic UI", "Meiryo", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Zen Kaku Gothic Antique", "Noto Serif JP", "Hiragino Mincho ProN",
+                  "Yu Mincho", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --fs-10: 10px;  --fs-11: 11px;  --fs-12: 12px;  --fs-13: 13px;
+  --fs-14: 14px;  --fs-15: 15px;  --fs-16: 16px;  --fs-17: 17px;
+  --fs-19: 19px;  --fs-20: 20px;  --fs-21: 21px;  --fs-24: 24px;
+  --fs-30: 30px;
+
+  /* ---------- Обложки / бары ---------- */
+  --cover: 104px;   /* Dim.cover */
+  --bar:   72px;    /* Dim.bar   */
+}
+
+html[data-theme="light"] {
+  --surface:            #F8FAFC;
+  --surface-container:  #FFFFFF;
+  --surface-variant:    #F1F5F9;
+  --sc-lowest:          #FFFFFF;
+  --sc-low:             #F8FAFC;
+  --sc-high:            #E2E8F0;
+  --sc-highest:         #CBD5E1;
+
+  --on-surface:         #0F172A;
+  --on-surface-variant: #475569;
+
+  --outline:      #CBD5E1;
+  --outline-var:  #E2E8F0;
+
+  --error:  #DC2626;
+  --ok:     #16A34A;
+  --warn:   #D97706;
+
+  --primary:  #5B3BE8;
+  --acc:      #5B3BE8;
+
+  --sub:      #F8F9FA;
+  --glass:    #FDFDFD;
+  --brd:      transparent;
+  --brd-em:   rgba(124, 92, 255, .30);
+
+  --grad:  linear-gradient(160deg, #E0E7FF, #F8FAFC);
+  --glow:  0 2px 8px rgba(15, 23, 42, .12);
+}
+
+/* ============================================================
+   Семантические классы — базовые типографические роли
+   Названия — прикладные: h1/h2/…/body/mono/label/caption
+   ============================================================ */
+
+.h1 { font: 600 var(--fs-24)/1.25 var(--font-sans); letter-spacing: -0.01em; }
+.h2 { font: 600 var(--fs-20)/1.30 var(--font-sans); letter-spacing: -0.01em; }
+.h3 { font: 600 var(--fs-16)/1.35 var(--font-sans); }
+.h4 { font: 600 var(--fs-15)/1.35 var(--font-sans); }
+
+.body   { font: 400 var(--fs-14)/1.5 var(--font-sans); }
+.body-l { font: 400 var(--fs-16)/1.5 var(--font-sans); }
+.body-s { font: 400 var(--fs-13)/1.45 var(--font-sans); }
+.label  { font: 500 var(--fs-13)/1.35 var(--font-sans); }
+.caption{ font: 400 var(--fs-11)/1.4 var(--font-sans); color: var(--on-surface-variant); }
+.hint   { font: 400 var(--fs-10)/1.3 var(--font-sans); color: var(--on-surface-variant); }
+.mono   { font: 500 var(--fs-12)/1.4 var(--font-mono); letter-spacing: 0.02em; }
+
+.muted { color: var(--on-surface-variant); }
+.tnum  { font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   Слои-поверхности (из aurora.css)
+   ============================================================ */
+
+.s-sub    { background: var(--sub); border: 1px solid var(--brd); }
+.s-glass  { background: var(--glass); border: 1px solid var(--brd); backdrop-filter: blur(16px); }
+.s-strong { background: var(--surface-container); border: 1px solid var(--brd-em); }
+html[data-theme="light"] .s-glass,
+html[data-theme="light"] .s-strong { box-shadow: 0 2px 8px rgba(15, 23, 42, .12); }
+
+/* Reset для preview-карт */
+*, *::before, *::after { box-sizing: border-box; }

@@ -18,6 +18,14 @@ android {
 }
 
 dependencies {
+    // Токены оформления приложения — экран-обёртка host/AnimeScreen должна выглядеть
+    // как остальные вкладки, а не как отдельное приложение.
+    implementation(project(":core:design"))
+
+    // Чтение папки, выбранной через системный диалог: у content-документа
+    // пути для File нет, обходить дерево можно только DocumentFile.
+    implementation("androidx.documentfile:documentfile:1.0.1")
+
     val media3 = "1.5.1"
     api("androidx.media3:media3-exoplayer:$media3")
     api("androidx.media3:media3-exoplayer-hls:$media3")

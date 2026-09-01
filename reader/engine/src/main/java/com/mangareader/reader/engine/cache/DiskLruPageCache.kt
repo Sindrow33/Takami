@@ -1,0 +1,245 @@
+package com.mangareader.reader.engine.cache
+
+import com.mangareader.core.model.PageCacheKey
+import com.mangareader.core.model.PageRef
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.io.File
+
+/**
+ * Simple size-bounded LRU cache of downloaded page files on disk (§8:
+ * "Disk LRU cache: originals of pages, inpaint patches. Configurable
+ * limit, default 512MB.").
+ *
+ * Keyed by the page's *source* URI (this is the raw-bytes cache, keyed
+ * before we know the [com.mangareader.core.model.PageKey] — that content
+ * hash is only computable after at least one decode). This is distinct
+ * from and much larger than the translation JSON cache, which per §8 is
+ * NOT subject to this LRU eviction because it is tiny and precious.
+ *
+ * Ключ считается по URI **и заголовкам запроса** ([keyFor]). Один и тот
+ * же URL с разным `Referer` на многих хостингах картинок отдаёт разное:
+ * настоящую страницу или заглушку с 403. Ключ по одному URL склеил бы
+ * их в одну запись, и в кеше навсегда осела бы заглушка.
+ */
+class DiskLruPageCache(
+    private val directory: File,
+    private var maxSizeBytes: Long = DEFAULT_MAX_SIZE_BYTES,
+) {
+
+    /**
+     * Каталоги, которые кеш не наполняет, но обязан учитывать и
+     * вытеснять.
+     *
+     * Источник страниц сохраняет скачанные файлы сам — ему нужен путь
+     * на диске, а не байты в памяти. Если оставить такой каталог без
+     * присмотра, он растёт бесконечно: у источника нет ни лимита, ни
+     * вытеснения, а на длинной манге это десятки гигабайт. И наоборот,
+     * копировать те же байты в свой каталог значит хранить всё дважды.
+     *
+     * Поэтому владение местом одно: файлы остаются там, где их создал
+     * источник, а лимит и LRU-вытеснение общие.
+     */
+    private val adoptedDirs = java.util.concurrent.CopyOnWriteArrayList<File>()
+
+    /** Берёт чужой каталог со скачанными страницами под общий лимит. */
+    fun adopt(directory: File) {
+        directory.mkdirs()
+        if (adoptedDirs.none { it.absolutePath == directory.absolutePath }) {
+            adoptedDirs.add(directory)
+        }
+    }
+
+    /** Лежит ли файл в каталоге, за который кеш уже отвечает. */
+    fun isManaged(file: File): Boolean {
+        val path = file.absolutePath
+        if (path.startsWith(directory.absolutePath)) return true
+        return adoptedDirs.any { path.startsWith(it.absolutePath) }
+    }
+
+    private fun managedFiles(): List<File> =
+        (listOf(directory) + adoptedDirs).flatMap { dir ->
+            dir.listFiles()?.filter { it.isFile }.orEmpty()
+        }
+
+    /**
+     * Незавершённые загрузки. Источник пишет их в подкаталог
+     * `incomplete/` — намеренно, чтобы вытеснение не удалило временный
+     * файл посреди записи. Побочный эффект: подкаталог не попадает ни
+     * в подсчёт размера, ни в вытеснение, ни в очистку — а огрызок
+     * остаётся на диске после каждого обрыва и падения. Каталог, за
+     * которым никто не следит, растёт без предела: ровно та причина, по
+     * которой кеш вообще взял чужой каталог под надзор.
+     */
+    private fun incompleteFiles(): List<File> =
+        (listOf(directory) + adoptedDirs).flatMap { dir ->
+            File(dir, INCOMPLETE_DIR).listFiles()?.filter { it.isFile }.orEmpty()
+        }
+    companion object {
+        const val DEFAULT_MAX_SIZE_BYTES = 512L * 1024 * 1024
+
+        /** Сколько байт читаем для проверки сигнатуры при чтении. */
+        private const val HEADER_PROBE_BYTES = 64
+
+        /** Подкаталог незавершённых загрузок источника. */
+        const val INCOMPLETE_DIR = PageCacheKey.INCOMPLETE_DIR
+
+        /**
+         * Возраст, после которого огрызок считается брошенным. Живая
+         * загрузка обновляет файл постоянно, поэтому час — заведомо
+         * больше любой честной закачки одной страницы и заведомо
+         * меньше срока, за который мусор станет заметен.
+         */
+        val STALE_INCOMPLETE_AGE_MS = 60L * 60 * 1000
+    }
+
+    private val mutex = Mutex()
+
+    init {
+        directory.mkdirs()
+    }
+
+    fun setMaxSizeBytes(bytes: Long) {
+        maxSizeBytes = bytes
+    }
+
+    /**
+     * Ключ кеша — общая на весь проект формула [PageCacheKey].
+     *
+     * Своей копии здесь сознательно нет: тот же ключ считает сетевой
+     * источник, когда даёт имя скачанному файлу, и две независимые
+     * реализации одной формулы уже разъезжались.
+     */
+    fun keyFor(uri: String, headers: Map<String, String> = emptyMap()): String =
+        PageCacheKey.of(uri, headers)
+
+    /** Куда кеш кладёт страницу, которую скачал не источник, а он сам. */
+    fun fileFor(uri: String, headers: Map<String, String> = emptyMap()): File =
+        File(directory, keyFor(uri, headers))
+
+    /** Файл для страницы — заголовки берутся из самой [PageRef]. */
+    fun fileFor(page: PageRef): File = fileFor(page.uri, page.headers)
+
+    /**
+     * Где страница лежит сейчас — в своём каталоге ИЛИ в поднадзорном.
+     *
+     * Искать только в своём нельзя. Сетевой источник сохраняет страницы
+     * сам, в свой каталог, и кеш взял этот каталог под общий лимит: он
+     * такие файлы считает и вытесняет. Но чтение шло по [fileFor], то
+     * есть только по собственному каталогу — значит для сетевого
+     * источника слой «диск» в цепочке память → упреждающая загрузка →
+     * диск → сеть не находил вообще ничего. Кеш отвечал за место чужих
+     * файлов и не давал за них ни одного попадания.
+     */
+    private fun locate(key: String): File? {
+        val own = File(directory, key)
+        if (own.isFile) return own
+        return adoptedDirs.asSequence()
+            .map { File(it, key) }
+            .firstOrNull { it.isFile }
+    }
+
+    /**
+     * Кладёт байты страницы в кеш.
+     *
+     * @return файл, или null если байты не похожи на изображение.
+     *
+     * Проверка сигнатуры обязательна именно здесь: цена ошибки
+     * несимметрична. Битую загрузку чинит повтор, а битую запись в
+     * кеше — ничего, она будет отдаваться при каждом открытии главы,
+     * пока пользователь не очистит кеш руками. Мусор приезжает от
+     * тела, прошедшего через String, от HTML с капчей под кодом 200 и
+     * от оборванной загрузки.
+     */
+    suspend fun put(uri: String, bytes: ByteArray, headers: Map<String, String> = emptyMap()): File? =
+        mutex.withLock {
+            if (!ImageBytes.looksLikeImage(bytes)) return@withLock null
+            val file = fileFor(uri, headers)
+            file.writeBytes(bytes)
+            file.setLastModified(System.currentTimeMillis())
+            evictIfNeeded()
+            file
+        }
+
+    suspend fun put(page: PageRef, bytes: ByteArray): File? = put(page.uri, bytes, page.headers)
+
+    suspend fun get(uri: String, headers: Map<String, String> = emptyMap()): File? = mutex.withLock {
+        val file = locate(keyFor(uri, headers)) ?: return@withLock null
+        if (file.length() < ImageBytes.MIN_SIZE_BYTES) {
+            file.delete()
+            return@withLock null
+        }
+
+        // Сигнатура перечитывается и на чтении: запись могла лечь до
+        // появления этой проверки или быть повреждена обрывом записи.
+        // Читаем только заголовок файла, не всё тело.
+        val header = ByteArray(HEADER_PROBE_BYTES)
+        val read = file.inputStream().use { it.read(header) }
+        if (read < ImageBytes.MIN_SIZE_BYTES || !ImageBytes.looksLikeImage(header)) {
+            file.delete()
+            return@withLock null
+        }
+
+        file.setLastModified(System.currentTimeMillis())
+        file
+    }
+
+    suspend fun get(page: PageRef): File? = get(page.uri, page.headers)
+
+    /**
+     * Сколько байт сейчас занято — для настроек и диагностики.
+     *
+     * Огрызки входят в число: пользователь в настройках видит место,
+     * занятое приложением, а не то, что кеш считает своим удачным
+     * содержимым.
+     */
+    fun sizeBytes(): Long = (managedFiles() + incompleteFiles()).sumOf { it.length() }
+
+    suspend fun clear() = mutex.withLock {
+        managedFiles().forEach { it.delete() }
+        // Очистка обязана освобождать всё место, за которое кеш
+        // отвечает, иначе показанный в настройках размер и реально
+        // освобождённое место расходятся.
+        incompleteFiles().forEach { it.delete() }
+        Unit
+    }
+
+    /**
+     * Приводит общий объём под лимит. Зовётся после того, как источник
+     * сам записал страницы в поднадзорный каталог: кеш о таких записях
+     * не знает, и без явного вызова лимит не соблюдался бы.
+     */
+    suspend fun enforceLimit() = mutex.withLock {
+        sweepStaleIncomplete()
+        evictIfNeeded()
+    }
+
+    /**
+     * Удаляет брошенные огрызки. Живую закачку не трогаем — только то,
+     * что не менялось дольше [STALE_INCOMPLETE_AGE_MS]: удалить файл,
+     * в который прямо сейчас пишут, значит уронить загрузку страницы,
+     * которую пользователь ждёт.
+     */
+    private fun sweepStaleIncomplete() {
+        val deadline = System.currentTimeMillis() - STALE_INCOMPLETE_AGE_MS
+        incompleteFiles()
+            .filter { it.lastModified() < deadline }
+            .forEach { it.delete() }
+    }
+
+    private fun evictIfNeeded() {
+        val files = managedFiles()
+        if (files.isEmpty()) return
+        // В бюджет входят и огрызки: место они занимают настоящее, а
+        // удалять их вытеснением нельзя — в них может идти запись.
+        // Поэтому они не кандидаты на удаление, но лимит уменьшают.
+        var totalSize = files.sumOf { it.length() } + incompleteFiles().sumOf { it.length() }
+        if (totalSize <= maxSizeBytes) return
+        val sortedByOldest = files.sortedBy { it.lastModified() }
+        for (file in sortedByOldest) {
+            if (totalSize <= maxSizeBytes) break
+            totalSize -= file.length()
+            file.delete()
+        }
+    }
+}
