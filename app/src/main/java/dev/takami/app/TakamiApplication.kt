@@ -3,8 +3,10 @@ package dev.takami.app
 import android.app.Application
 import com.mangareader.core.model.ReaderEvent
 import com.mangareader.feature.reader.ReaderSourceRegistry
+import com.mangareader.reader.engine.cache.DiskLruPageCache
 import dev.takami.app.data.ReadingProgressStore
 import dev.takami.app.library.ReaderPrefsStore
+import dev.takami.app.settings.AppSettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,6 +32,13 @@ class TakamiApplication : Application() {
         // Настройки чтения переживают закрытие читалки: движок знает
         // только интерфейс, реализацию подставляет приложение.
         ReaderSourceRegistry.settingsStore = ReaderPrefsStore(this)
+        // Кеш страниц между сессиями. Лежит в cacheDir: система сама
+        // вычистит его при нехватке места, а пользовательские главы в
+        // filesDir при этом не пострадают.
+        ReaderSourceRegistry.diskCache = DiskLruPageCache(
+            directory = java.io.File(cacheDir, "pages"),
+            maxSizeBytes = AppSettingsStore(this).pageCacheLimitBytes,
+        )
 
         appScope.launch {
             ReaderSourceRegistry.eventBus.events.collect { event ->

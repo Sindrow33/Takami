@@ -71,6 +71,7 @@ class ReaderActivity : ComponentActivity() {
                 eventBus = ReaderSourceRegistry.eventBus,
                 settingsStore = ReaderSourceRegistry.settingsStore,
                 seriesId = mangaId,
+                diskCache = ReaderSourceRegistry.diskCache,
             ),
         )[ReaderViewModel::class.java]
         viewModel.open(chapterId, startPage)
