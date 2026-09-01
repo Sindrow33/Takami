@@ -10,6 +10,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +28,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import core.engine.ParserStats
 import dev.takami.app.ui.components.Icon
 import dev.takami.app.ui.components.TakamiIcon
@@ -67,7 +70,23 @@ fun AiIndicator(stats: ParserStats) {
         )
     }
 
-    if (open) AiSheet(stats) { open = false }
+    if (open) {
+        /*
+         * Лист обязан жить в Dialog, а не в дереве главной.
+         * Главная — вертикально скроллящаяся колонка, то есть высота
+         * её содержимого не ограничена. Composable с fillMaxSize внутри
+         * такого родителя роняет приложение на измерении:
+         * "Vertically scrollable component was measured with an infinity
+         * maximum height constraints". Ровно этот краш и ловился при
+         * нажатии на индикатор автопарсера.
+         */
+        Dialog(
+            onDismissRequest = { open = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            AiSheet(stats) { open = false }
+        }
+    }
 }
 
 /** Мини-график: 5 столбиков, scaleY 0.6→1, stagger 150 мс. */
@@ -109,16 +128,29 @@ private fun AiSheet(stats: ParserStats, onClose: () -> Unit) {
         Modifier
             .fillMaxSize()
             .background(Color(0x99000000))
-            .clickable(onClick = onClose)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onClose,
+            )
     ) {
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                // Потолок высоты обязателен: содержимое листа растёт вместе
+                // с логом, а скроллящийся контейнер без границы сверху —
+                // тот же самый краш на измерении.
+                .fillMaxHeight(0.85f)
                 .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(Brush.verticalGradient(listOf(Color(0xFF1A1D25), Color(0xFF12141A))))
-                .padding(20.dp)
                 .verticalScroll(rememberScrollState())
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = {},
+                )
+                .padding(20.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(

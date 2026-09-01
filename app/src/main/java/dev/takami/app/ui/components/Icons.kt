@@ -74,13 +74,23 @@ fun Icon(
                 drawLine(tint, p(15.4f, 15.4f), p(20.5f, 20.5f), stroke.width, StrokeCap.Round)
             }
             TakamiIcon.Swipes -> {
-                // стрелки-круг: две дуги со наконечниками
-                drawArc(tint, 200f, 140f, false, topLeft = p(4f, 4f), size = androidx.compose.ui.geometry.Size(16f * u, 16f * u), style = stroke)
-                drawArc(tint, 20f, 140f, false, topLeft = p(4f, 4f), size = androidx.compose.ui.geometry.Size(16f * u, 16f * u), style = stroke)
-                drawLine(tint, p(6.5f, 6.5f), p(6.5f, 10.5f), stroke.width, StrokeCap.Round)
-                drawLine(tint, p(6.5f, 6.5f), p(10.5f, 6.5f), stroke.width, StrokeCap.Round)
-                drawLine(tint, p(17.5f, 17.5f), p(17.5f, 13.5f), stroke.width, StrokeCap.Round)
-                drawLine(tint, p(17.5f, 17.5f), p(13.5f, 17.5f), stroke.width, StrokeCap.Round)
+                /*
+                 * Две карточки со сдвигом — метафора подбора свайпами.
+                 * Прежний вариант рисовал две дуги с наконечниками
+                 * в стороне от их концов: на экране это выглядело
+                 * мешаниной штрихов, а не иконкой.
+                 */
+                val back = Path().apply {
+                    moveTo(8.5f * u, 3.5f * u); lineTo(18.5f * u, 5.6f * u)
+                    lineTo(16.2f * u, 16.4f * u); lineTo(6.2f * u, 14.3f * u); close()
+                }
+                drawPath(back, tint.copy(alpha = .45f), style = stroke)
+
+                val front = Path().apply {
+                    moveTo(5f * u, 7.5f * u); lineTo(14.5f * u, 7.5f * u)
+                    lineTo(14.5f * u, 20f * u); lineTo(5f * u, 20f * u); close()
+                }
+                drawPath(front, tint, style = stroke)
             }
             TakamiIcon.Brain -> {
                 drawCircle(tint, radius = 5.6f * u, center = p(12f, 12f), style = stroke)
