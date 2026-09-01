@@ -1,5 +1,8 @@
 package dev.anime.player.host
 
+import android.content.Context
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import java.io.File
 
 /**
@@ -90,6 +93,49 @@ object AnimeCatalog {
             }
             Title(id = dir.name, name = dir.name, episodes = sortEpisodes(episodes))
         }
+    }
+
+    /**
+     * Тайтлы из папки, выбранной пользователем через системный диалог.
+     *
+     * Отличие от [scan] одно, но принципиальное: доступ идёт через `content://`,
+     * а не по пути на диске — у выбранной папки пути, пригодного для `File`,
+     * может не быть вовсе (SD-карта, облачный провайдер, USB). Копировать
+     * серию в кеш при этом НЕ нужно: Media3 играет `content://` напрямую,
+     * а серия — это сотни мегабайт на каждый просмотр.
+     *
+     * Раскладка та же: `<папка>/anime/<Название>/<серия>.mp4`; если подпапки
+     * `anime` нет, читаем выбранную папку как каталог тайтлов — иначе
+     * пользователь, указавший сразу свою папку с аниме, видит пустой экран.
+     */
+    /** Имя подпапки с аниме внутри выбранного каталога, если она там есть. */
+    const val ANIME_DIR = "anime"
+
+    fun scanTree(context: Context, tree: Uri): List<Title> {
+        val selected = DocumentFile.fromTreeUri(context, tree) ?: return emptyList()
+        val root = selected.findFile(ANIME_DIR)?.takeIf { it.isDirectory } ?: selected
+        return root.listFiles()
+            .filter { it.isDirectory }
+            .sortedBy { it.name.orEmpty() }
+            .mapNotNull { dir -> titleFrom(dir) }
+    }
+
+    private fun titleFrom(dir: DocumentFile): Title? {
+        val name = dir.name.orEmpty()
+        if (name.isEmpty()) return null
+        val files = dir.listFiles().filter { it.isFile && isVideo(it.name.orEmpty()) }
+        if (files.isEmpty()) return null
+        val episodes = files.map { f ->
+            val fileName = f.name.orEmpty()
+            Episode(
+                id = name + "/" + fileName,
+                title = fileName.substringBeforeLast('.'),
+                number = episodeNumber(fileName) ?: 0,
+                url = f.uri.toString(),
+                isLocal = true,
+            )
+        }
+        return Title(id = name, name = name, episodes = sortEpisodes(episodes))
     }
 
     /**

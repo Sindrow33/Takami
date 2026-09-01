@@ -48,3 +48,37 @@ class AnimeCatalogTest {
         id = title, title = title, number = number, url = "file:///$title", isLocal = true,
     )
 }
+
+class AnimeCatalogTreeTest {
+
+    @org.junit.Test
+    fun scansAnimeSubfolderOfTheChosenDirectory() {
+        val base = java.io.File.createTempFile("root", "").let { f ->
+            f.delete(); f.mkdirs(); f
+        }
+        val chapterDir = java.io.File(base, "anime/My Title").apply { mkdirs() }
+        java.io.File(chapterDir, "02 - second.mp4").writeText("x")
+        java.io.File(chapterDir, "01 - first.mkv").writeText("x")
+        java.io.File(chapterDir, "cover.jpg").writeText("x")
+
+        val titles = AnimeCatalog.scan(base)
+
+        org.junit.Assert.assertEquals(1, titles.size)
+        org.junit.Assert.assertEquals("My Title", titles[0].name)
+        org.junit.Assert.assertEquals(
+            listOf(1, 2),
+            titles[0].episodes.map { it.number },
+        )
+        base.deleteRecursively()
+    }
+
+    @org.junit.Test
+    fun skipsFoldersWithoutVideoFiles() {
+        val base = java.io.File.createTempFile("root2", "").let { f -> f.delete(); f.mkdirs(); f }
+        java.io.File(base, "anime/images only").apply { mkdirs() }
+            .let { java.io.File(it, "1.jpg").writeText("x") }
+
+        org.junit.Assert.assertTrue(AnimeCatalog.scan(base).isEmpty())
+        base.deleteRecursively()
+    }
+}
