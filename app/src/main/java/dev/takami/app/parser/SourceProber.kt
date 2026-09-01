@@ -11,6 +11,7 @@ import core.model.TerminalContent
 import core.net.OkHttpClientAdapter
 import core.store.SourceRegistry
 import core.validate.Verdict
+import dev.takami.app.swipes.DiscoveredTitles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -75,6 +76,17 @@ class SourceProber(private val context: Context) {
                 if (result.isUsable && found != null) {
                     ok = true
                     lines += found
+                    /*
+                     * Разобранный каталог сохраняем для подбора свайпами.
+                     * Без этого разбор сайта оставался диагностикой: он
+                     * печатал «каталог: 40 тайтлов» и выбрасывал их, а
+                     * экран свайпов оставался пустым навсегда.
+                     */
+                    val listing = result.payload as? ParsedPayload.Listing
+                    if (listing != null && listing.items.isNotEmpty()) {
+                        DiscoveredTitles(context).add(listing.items, host)
+                        lines += "Тайтлы добавлены в подбор свайпами."
+                    }
                     lines += "Уверенность: ${percent(result.report.verdict.confidenceOrZero)}."
                     result.heal?.takeIf { !it.isEmpty }?.let {
                         lines += "Селекторы были сломаны — парсер предложил замену."

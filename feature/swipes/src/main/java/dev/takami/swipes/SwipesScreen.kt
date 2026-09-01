@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,6 +41,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
@@ -61,23 +65,46 @@ import kotlinx.coroutines.launch
  * когда каталог появится — форма [DeckCard] под него и подобрана.
  */
 @Composable
-fun SwipesScreen(modifier: Modifier = Modifier) {
-    var deck by remember { mutableStateOf(DeckState(SwipeMath.demoDeck())) }
+fun SwipesScreen(
+    modifier: Modifier = Modifier,
+    source: SwipeSource = NoSwipeSource,
+    decisions: SwipeDecisionStore = NoDecisionStore,
+) {
+    val context = LocalContext.current
+    val coverLoader = remember { CoverLoader(java.io.File(context.cacheDir, "covers")) }
+    // null — ещё загружаем; пустой список — данных нет, и это нормальное
+    // состояние, а не ошибка: пока сайт не разобран, подбирать нечего.
+    var deck by remember { mutableStateOf<DeckState?>(null) }
     var widthPx by remember { mutableFloatStateOf(0f) }
     val dragX = remember { Animatable(0f) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var reloadKey by remember { mutableStateOf(0) }
+
+    LaunchedEffect(reloadKey) {
+        val all = source.cards()
+        val decided = decisions.decidedIds()
+        deck = DeckState(SwipeMath.filterUndecided(all, decided))
+    }
 
     fun commit(direction: SwipeDirection) {
+        val current = deck ?: return
         if (direction == SwipeDirection.None) {
             scope.launch { dragX.animateTo(0f, spring(dampingRatio = 0.55f, stiffness = 420f)) }
             return
         }
+        val card = current.current ?: return
         scope.launch {
             dragX.animateTo(SwipeMath.flyAwayX(direction, widthPx), tween(220))
-            deck = deck.apply(direction)
+            deck = current.apply(direction)
             dragX.snapTo(0f)
+            // Решение записываем ПОСЛЕ анимации, но до следующего свайпа:
+            // иначе быстрая серия свайпов теряет часть записей.
+            decisions.record(card.id, direction)
+            if (direction == SwipeDirection.Like) source.like(card)
         }
     }
+
+    val current = deck
 
     Column(
         modifier
@@ -90,9 +117,9 @@ fun SwipesScreen(modifier: Modifier = Modifier) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Свайпы", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(10.dp))
-            if (!deck.isFinished) {
+            if (current != null && !current.isFinished) {
                 Text(
-                    "осталось " + deck.remaining,
+                    "осталось " + current.remaining,
                     color = Aurora.OnSurfaceVariant,
                     fontSize = 12.sp,
                 )
@@ -107,46 +134,60 @@ fun SwipesScreen(modifier: Modifier = Modifier) {
         Spacer(Modifier.height(18.dp))
 
         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-            if (deck.isFinished) {
-                DeckFinished(liked = deck.liked.size, onRestart = { deck = deck.restart() })
-            } else {
-                deck.next?.let { under ->
-                    DeckCardView(
-                        card = under,
-                        modifier = Modifier
-                            .scale(SwipeMath.underCardScale(dragX.value, widthPx))
-                            .alpha(0.55f),
-                    )
-                }
-                deck.current?.let { top ->
-                    val progress = SwipeMath.dragProgress(dragX.value, widthPx)
-                    Box(
-                        Modifier
-                            .offset { IntOffset(dragX.value.toInt(), 0) }
-                            .rotate(SwipeMath.tiltDegrees(dragX.value, widthPx))
-                            .pointerInput(top.id, widthPx) {
-                                detectHorizontalDragGestures(
-                                    onDragEnd = {
-                                        commit(SwipeMath.directionFor(dragX.value, widthPx))
-                                    },
-                                    onDragCancel = { commit(SwipeDirection.None) },
-                                    onHorizontalDrag = { _, delta ->
-                                        scope.launch { dragX.snapTo(dragX.value + delta) }
-                                    },
-                                )
-                            },
-                    ) {
-                        DeckCardView(card = top, glow = progress)
-                        SwipeBadges(
-                            alpha = SwipeMath.badgeAlpha(dragX.value, widthPx),
-                            positive = progress > 0f,
+            when {
+                current == null -> Unit // первая загрузка, экран пустой
+                current.cards.isEmpty() -> NothingToSwipe()
+                current.isFinished -> DeckFinished(
+                    liked = current.liked.size,
+                    onRestart = {
+                        // «Пройти заново» очищает решения: иначе колода
+                        // после очистки собирается снова пустой.
+                        scope.launch {
+                            decisions.clear()
+                            reloadKey++
+                        }
+                    },
+                )
+                else -> {
+                    current.next?.let { under ->
+                        DeckCardView(
+                            card = under,
+                            modifier = Modifier
+                                .scale(SwipeMath.underCardScale(dragX.value, widthPx))
+                                .alpha(0.55f),
+                            coverLoader = coverLoader,
                         )
+                    }
+                    current.current?.let { top ->
+                        val progress = SwipeMath.dragProgress(dragX.value, widthPx)
+                        Box(
+                            Modifier
+                                .offset { IntOffset(dragX.value.toInt(), 0) }
+                                .rotate(SwipeMath.tiltDegrees(dragX.value, widthPx))
+                                .pointerInput(top.id, widthPx) {
+                                    detectHorizontalDragGestures(
+                                        onDragEnd = {
+                                            commit(SwipeMath.directionFor(dragX.value, widthPx))
+                                        },
+                                        onDragCancel = { commit(SwipeDirection.None) },
+                                        onHorizontalDrag = { _, delta ->
+                                            scope.launch { dragX.snapTo(dragX.value + delta) }
+                                        },
+                                    )
+                                },
+                        ) {
+                            DeckCardView(card = top, glow = progress, coverLoader = coverLoader)
+                            SwipeBadges(
+                                alpha = SwipeMath.badgeAlpha(dragX.value, widthPx),
+                                positive = progress > 0f,
+                            )
+                        }
                     }
                 }
             }
         }
 
-        if (!deck.isFinished) {
+        if (current != null && !current.isFinished && current.cards.isNotEmpty()) {
             Row(
                 Modifier.fillMaxWidth().padding(vertical = 18.dp),
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
@@ -161,14 +202,60 @@ fun SwipesScreen(modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Пустое состояние. Говорит, ЧТО сделать, а не «список пуст»: пока сайт не
+ * разобран и локальных файлов нет, подбирать действительно нечего, и
+ * пользователь должен понимать, что это не поломка.
+ */
 @Composable
-private fun DeckCardView(card: DeckCard, modifier: Modifier = Modifier, glow: Float = 0f) {
+private fun NothingToSwipe() {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(horizontal = 12.dp),
+    ) {
+        Box(
+            Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Aurora.SurfaceContainer),
+            contentAlignment = Alignment.Center,
+        ) { Text("∅", color = Aurora.OnSurfaceVariant, fontSize = 26.sp) }
+        Spacer(Modifier.height(16.dp))
+        Text("Подбирать пока нечего", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Карточки берутся из вашей библиотеки и из разобранных сайтов. " +
+                "Добавьте папку с файлами или разберите сайт в Настройках.",
+            color = Aurora.OnSurfaceVariant,
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun DeckCardView(
+    card: DeckCard,
+    modifier: Modifier = Modifier,
+    glow: Float = 0f,
+    coverLoader: CoverLoader? = null,
+) {
     val tint = when {
         glow > 0f -> Aurora.Ok.copy(alpha = 0.35f * glow)
         glow < 0f -> Aurora.Error.copy(alpha = 0.35f * -glow)
         else -> Aurora.Outline.copy(alpha = 0.5f)
     }
-    Column(
+
+    var cover by remember(card.id) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    val url = card.coverUrl
+    LaunchedEffect(card.id, url) {
+        if (url != null && coverLoader != null) {
+            cover = coverLoader.load(url, COVER_TARGET_WIDTH_PX)
+        }
+    }
+
+    Box(
         modifier
             .fillMaxWidth()
             .height(420.dp)
@@ -178,8 +265,41 @@ private fun DeckCardView(card: DeckCard, modifier: Modifier = Modifier, glow: Fl
                     listOf(Aurora.SurfaceContainer, Aurora.ScLow)
                 )
             )
-            .border(1.5.dp, tint, RoundedCornerShape(24.dp))
-            .padding(22.dp),
+            .border(1.5.dp, tint, RoundedCornerShape(24.dp)),
+    ) {
+        val bitmap = cover
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            // Затемнение снизу: без него белый текст на светлой обложке
+            // не читается вообще.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.45f to Color.Black.copy(alpha = 0.35f),
+                            1f to Color.Black.copy(alpha = 0.85f),
+                        )
+                    )
+            )
+        }
+        CardText(card, Modifier.align(Alignment.BottomStart))
+    }
+}
+
+/** Целевая ширина обложки в пикселях — карточка занимает почти всю ширину экрана. */
+private const val COVER_TARGET_WIDTH_PX = 720
+
+@Composable
+private fun CardText(card: DeckCard, modifier: Modifier) {
+    Column(
+        modifier.padding(22.dp),
         verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom,
     ) {
         Box(
@@ -191,7 +311,9 @@ private fun DeckCardView(card: DeckCard, modifier: Modifier = Modifier, glow: Fl
         Spacer(Modifier.height(10.dp))
         Text(card.title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
-        Text(card.subtitle, color = Aurora.OnSurfaceVariant, fontSize = 13.sp)
+        if (card.subtitle.isNotBlank()) {
+            Text(card.subtitle, color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
+        }
     }
 }
 
