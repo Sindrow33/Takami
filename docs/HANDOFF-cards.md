@@ -82,3 +82,30 @@ TitleDetailsScreen(data, description = ..., characters = ..., loader = loader)
 
 Шаги `:feature:cards` добавлены в `.github/workflows/app.yml` (тесты, сборка,
 отчёты).
+
+## Замена карточки на главной (для `:app`)
+
+Данные для главной уже собирает `LibraryFeed` (PR #33). Поля совпадают
+один в один, кроме имени типа: в `:app` это `ContentType`, в модуле —
+`ContentKind`. Модуль не зависит от `:app` намеренно (обратная зависимость
+замкнула бы граф), поэтому маппинг живёт на стороне `:app`:
+
+```kotlin
+private fun LibraryFeed.TitleCardData.toCard() = dev.takami.cards.TitleCardData(
+    id = id,
+    title = title,
+    kind = when (kind) {
+        ContentType.Anime -> ContentKind.Anime
+        ContentType.Manga -> ContentKind.Manga
+        ContentType.Novel -> ContentKind.Novel
+    },
+    coverUrl = coverUrl,
+    subtitle = subtitle,
+    rating = rating,
+    badgeCount = badgeCount,
+    progress = progress,
+)
+```
+
+`when` без `else`: добавится четвёртый тип контента — компилятор укажет
+на это место, а не покажет его как аниме.
