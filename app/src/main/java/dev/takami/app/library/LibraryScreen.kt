@@ -45,6 +45,10 @@ fun LibraryScreen() {
     var openedTitle by remember { mutableStateOf<LocalLibrary.Title?>(null) }
     var scanned by remember { mutableStateOf(false) }
     var rescan by remember { mutableStateOf(0) }
+    // Открытая текстовая глава. Ранобэ показывается своим экраном:
+    // у текста нет страниц, декодирования и разворотов, зато есть
+    // перевёрстка при каждой смене настроек.
+    var openedNovel by remember { mutableStateOf<OpenNovel?>(null) }
 
     /*
      * Выбор папки через системный диалог. Пока его не было, корнем
@@ -63,13 +67,29 @@ fun LibraryScreen() {
     }
 
     LaunchedEffect(rescan) {
-        titles = withContext(Dispatchers.IO) { LocalLibrary.allTitles(context) }
+        titles = withContext(Dispatchers.IO) {
+            val tree = root.selectedTree()
+            // Текстовые тайтлы идут тем же списком: для читателя это
+            // одна библиотека, а чем открывать — решает сама глава.
+            LocalLibrary.allTitles(context) +
+                (tree?.let { NovelLibrary.titles(context, it) } ?: emptyList())
+        }
         scanned = true
+    }
+
+    val novel = openedNovel
+    if (novel != null) {
+        NovelReaderHost(chapterTitle = novel.title, open = novel) { openedNovel = null }
+        return
     }
 
     val title = openedTitle
     when {
-        title != null -> ChapterList(title, onBack = { openedTitle = null })
+        title != null -> ChapterList(
+            title = title,
+            onBack = { openedTitle = null },
+            onOpenNovel = { openedNovel = it },
+        )
         titles.isEmpty() && scanned -> EmptyLibrary(
             path = root.displayPath(),
             folderChosen = root.selectedTree() != null,
@@ -155,7 +175,11 @@ private fun TitleList(
 }
 
 @Composable
-private fun ChapterList(title: LocalLibrary.Title, onBack: () -> Unit) {
+private fun ChapterList(
+    title: LocalLibrary.Title,
+    onBack: () -> Unit,
+    onOpenNovel: (OpenNovel) -> Unit,
+) {
     val context = LocalContext.current
     val progress = remember { ReadingProgressStore(context) }
     LazyColumn(
@@ -180,7 +204,13 @@ private fun ChapterList(title: LocalLibrary.Title, onBack: () -> Unit) {
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(Aurora.RadiusS))
                     .background(Aurora.Sub)
-                    .clickable { openReader(context, title, chapter) }
+                    .clickable {
+                        if (NovelLibrary.isTextChapter(chapter.id)) {
+                            onOpenNovel(OpenNovel(title, chapter))
+                        } else {
+                            openReader(context, title, chapter)
+                        }
+                    }
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -190,7 +220,11 @@ private fun ChapterList(title: LocalLibrary.Title, onBack: () -> Unit) {
                     ChapterProgressLabel(progress, chapter.id)
                 }
                 Text(
-                    if (chapter.isArchive) "CBZ" else "папка",
+                    when {
+                        NovelLibrary.isTextChapter(chapter.id) -> "текст"
+                        chapter.isArchive -> "CBZ"
+                        else -> "папка"
+                    },
                     color = Aurora.OnSurfaceVariant,
                     fontSize = 11.sp,
                 )

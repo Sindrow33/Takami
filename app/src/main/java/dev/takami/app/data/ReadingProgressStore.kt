@@ -27,6 +27,28 @@ class ReadingProgressStore(context: Context) {
 
     fun isCompleted(chapterId: String): Boolean = sp.getBoolean(doneKey(chapterId), false)
 
+    /**
+     * Позиция в текстовой главе — в символах.
+     *
+     * Отдельно от страницы намеренно: страница манги и смещение в
+     * тексте это разные величины, и общий ключ означал бы, что открытая
+     * когда-то как манга глава уносит читателя текста в случайное
+     * место.
+     */
+    fun saveCharOffset(chapterId: String, offset: Int, totalChars: Int) {
+        sp.edit()
+            .putInt(charKey(chapterId), offset)
+            .putInt(charTotalKey(chapterId), totalChars)
+            .apply()
+    }
+
+    fun charOffset(chapterId: String): Int = sp.getInt(charKey(chapterId), 0)
+
+    fun charTotal(chapterId: String): Int = sp.getInt(charTotalKey(chapterId), 0)
+
+    private fun charKey(chapterId: String) = "char:$chapterId"
+    private fun charTotalKey(chapterId: String) = "chartotal:$chapterId"
+
     private fun pageKey(chapterId: String) = "page:$chapterId"
     private fun totalKey(chapterId: String) = "total:$chapterId"
     private fun doneKey(chapterId: String) = "done:$chapterId"
