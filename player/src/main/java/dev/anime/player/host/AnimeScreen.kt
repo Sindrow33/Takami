@@ -36,10 +36,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.anime.player.core.Media3Engine
 import dev.anime.player.skip.SkipSegment
+import dev.anime.player.track.TrackKind
+import dev.anime.player.track.TrackSelection
 import dev.anime.player.ui.PlayerScreen
 import dev.anime.player.ui.formatTime
 import dev.takami.app.ui.theme.Aurora
 import java.io.File
+import java.util.Locale
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -120,11 +123,19 @@ fun AnimeScreen(
     } else {
         EpisodePlayer(
             episode = episode,
+            // Серии того же тайтла — для перехода к следующей.
+            siblings = titles.firstOrNull { title ->
+                title.episodes.any { it.id == episode.id }
+            }?.episodes.orEmpty(),
             progress = progress,
             modifier = modifier,
             onExit = {
                 playing = null
                 progressStamp++
+            },
+            onPlayEpisode = { next ->
+                progressStamp++
+                playing = next
             },
         )
     }
@@ -133,12 +144,15 @@ fun AnimeScreen(
 @Composable
 private fun EpisodePlayer(
     episode: AnimeCatalog.Episode,
+    siblings: List<AnimeCatalog.Episode>,
     progress: WatchProgressStore,
     modifier: Modifier,
     onExit: () -> Unit,
+    onPlayEpisode: (AnimeCatalog.Episode) -> Unit,
 ) {
     val context = LocalContext.current
     val engine = remember(episode.id) { Media3Engine(context) }
+    val controllerForSubtitles = remember { EnhancerController(context, context.cacheDir) }
     val state by engine.state.collectAsState()
     // Skip-тайминги приедут вместе с каталогом: AniSkip индексирует эпизоды по id тайтла,
     // которого у локального файла нет. Провайдер готов (:player/skip/net), подключается там же.
@@ -147,6 +161,40 @@ private fun EpisodePlayer(
     LaunchedEffect(episode.id) {
         engine.load(episode.url, startMs = progress.resumeFrom(episode.id))
     }
+
+    // Внешние субтитры рядом с файлом: Media3 сам их не подхватывает —
+    // .srt рядом с видео это отдельный файл, а не дорожка контейнера.
+    // Без этого вызова addSubtitleTrack в движке не использовался нигде.
+    LaunchedEffect(episode.id) {
+        val sidecar = controllerForSubtitles.sidecarSubtitleUri(
+            episode.url, episode.fileName.ifEmpty { episode.title },
+        )
+        if (sidecar != null) {
+            engine.addSubtitleTrack(sidecar.uri, Locale.getDefault().language, sidecar.mimeType)
+        }
+    }
+
+    // Автовыбор дорожек: язык интерфейса как предпочтение. Список готов не
+    // сразу после load(), поэтому подписываемся, а не читаем один раз.
+    LaunchedEffect(episode.id) {
+        engine.onTracksChanged { available ->
+            if (available.isEmpty()) return@onTracksChanged
+            val preferred = listOf(Locale.getDefault().language, "ru", "en")
+            val audio = TrackSelection.preferredAudio(available, preferred)
+            if (audio != null && !audio.isSelected) engine.selectTrack(audio)
+            val subtitle = TrackSelection.preferredSubtitle(
+                available, preferred, (audio ?: available.first()).language,
+            )
+            if (subtitle != null) engine.selectTrack(subtitle) else engine.disableTracks(TrackKind.Subtitle)
+        }
+    }
+
+    val nextEpisode = remember(episode.id, siblings) {
+        EpisodeQueue.next(siblings, episode.id)
+    }
+    val showNext = EpisodeQueue.shouldPromptNext(
+        state.positionMs, state.durationMs, nextEpisode != null,
+    )
 
     // Сохраняем позицию по ходу просмотра, а не только на выходе: процесс могут
     // убить в фоне, и тогда «продолжить с той же секунды» не сработало бы.
@@ -157,7 +205,7 @@ private fun EpisodePlayer(
     // --- ИИ-озвучка ------------------------------------------------------
     // Включается только вручную и только для скачанного файла: синтез стоит
     // батарею и время, а по онлайн-потоку звуковую дорожку не получить.
-    val controller = remember { EnhancerController(context, context.cacheDir) }
+    val controller = controllerForSubtitles
     var dubbing by remember(episode.id) { mutableStateOf<EnhancerController.Ready?>(null) }
     var dubMessage by remember(episode.id) { mutableStateOf<String?>(null) }
     var dubLoading by remember(episode.id) { mutableStateOf(false) }
@@ -234,6 +282,17 @@ private fun EpisodePlayer(
             },
             notice = dubMessage,
             onNoticeDismiss = { dubMessage = null },
+            nextEpisodeLabel = if (showNext) EpisodeQueue.nextLabel(nextEpisode) else null,
+            onNextEpisode = if (showNext && nextEpisode != null) {
+                {
+                    // Серия досмотрена — помечаем, иначе она осталась бы
+                    // «остановились на 23:40» навсегда.
+                    progress.markWatched(episode.id, state.durationMs)
+                    onPlayEpisode(nextEpisode)
+                }
+            } else {
+                null
+            },
         )
     }
 }

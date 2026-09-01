@@ -7,11 +7,16 @@ import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import dev.anime.player.track.MediaTrack
+import dev.anime.player.track.TrackKind
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -113,4 +118,78 @@ class Media3Engine(context: Context) : PlayerEngine {
 
     /** Только для привязки PlayerView. */
     fun exoInstance(): ExoPlayer = exo
+
+    // --- Дорожки звука и субтитров ---------------------------------------
+
+    /**
+     * Дорожки текущего файла в модели [MediaTrack].
+     *
+     * Своя модель, а не `Tracks.Group`, потому что вся логика выбора должна
+     * быть проверяема JVM-тестом; здесь только перевод из Media3 и обратно
+     * по паре индексов.
+     */
+    fun availableTracks(): List<MediaTrack> {
+        val out = mutableListOf<MediaTrack>()
+        val groups = exo.currentTracks.groups
+        groups.forEachIndexed { groupIndex, group ->
+            val kind = when (group.type) {
+                C.TRACK_TYPE_AUDIO -> TrackKind.Audio
+                C.TRACK_TYPE_TEXT -> TrackKind.Subtitle
+                else -> null
+            } ?: return@forEachIndexed
+            for (formatIndex in 0 until group.length) {
+                if (!group.isTrackSupported(formatIndex)) continue
+                val format = group.getTrackFormat(formatIndex)
+                out += MediaTrack(
+                    groupIndex = groupIndex,
+                    formatIndex = formatIndex,
+                    kind = kind,
+                    language = format.language,
+                    label = format.label,
+                    isSelected = group.isTrackSelected(formatIndex),
+                    channels = format.channelCount.coerceAtLeast(0),
+                    isForced = format.selectionFlags and C.SELECTION_FLAG_FORCED != 0,
+                    isDefault = format.selectionFlags and C.SELECTION_FLAG_DEFAULT != 0,
+                )
+            }
+        }
+        return out
+    }
+
+    fun selectTrack(track: MediaTrack) {
+        val group = exo.currentTracks.groups.getOrNull(track.groupIndex) ?: return
+        exo.trackSelectionParameters = exo.trackSelectionParameters
+            .buildUpon()
+            .setOverrideForType(
+                TrackSelectionOverride(group.mediaTrackGroup, listOf(track.formatIndex))
+            )
+            .setTrackTypeDisabled(typeOf(track.kind), false)
+            .build()
+    }
+
+    /**
+     * Выключает дорожки типа целиком — нужно для «Субтитры: выкл».
+     * Через `setTrackTypeDisabled`, а не пустым override: снятый override
+     * вернул бы автоматический выбор, то есть субтитры включились бы снова.
+     */
+    fun disableTracks(kind: TrackKind) {
+        exo.trackSelectionParameters = exo.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(typeOf(kind), true)
+            .build()
+    }
+
+    /** Уведомление о смене набора дорожек: их список готов не сразу после load(). */
+    fun onTracksChanged(listener: (List<MediaTrack>) -> Unit) {
+        exo.addListener(object : Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) {
+                listener(availableTracks())
+            }
+        })
+    }
+
+    private fun typeOf(kind: TrackKind): Int = when (kind) {
+        TrackKind.Audio -> C.TRACK_TYPE_AUDIO
+        TrackKind.Subtitle -> C.TRACK_TYPE_TEXT
+    }
 }
