@@ -43,7 +43,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mangareader.reader.engine.gesture.TapZoneScheme
 import com.mangareader.reader.engine.settings.ReadingMode
+import com.mangareader.reader.ui.compose.PagedReaderScreen
 import com.mangareader.reader.ui.compose.WebtoonReaderScreen
+import com.mangareader.reader.ui.view.PagedReaderView
 import com.mangareader.reader.ui.view.WebtoonFeedView
 import com.mangareader.translate.api.TranslationMode
 import dev.takami.app.ui.theme.Aurora
@@ -72,21 +74,47 @@ fun ReaderRoot(
     }
 
     Box(modifier.fillMaxSize().background(Aurora.Surface)) {
-        WebtoonReaderScreen(
-            items = state.items,
-            translationMode = state.translationMode,
-            onViewportSettled = viewModel::onViewportSettled,
-            bitmapProvider = object : WebtoonFeedView.PageBitmapProvider {
-                override fun bitmapFor(item: com.mangareader.reader.engine.layout.FeedItem.Page) =
-                    viewModel.bitmapFor(item)
-            },
-            onLayoutWidth = viewModel::onLayoutWidth,
-            onTap = viewModel::toggleChrome,
-            tapZoneScheme = state.settings.tapZoneScheme,
-            isRtl = state.settings.readingMode.isRtl,
-            scrollToIndex = state.pendingScrollIndex,
-            onScrollHandled = viewModel::onScrollHandled,
-        )
+        /*
+         * Режим чтения выбирает вьюху, а не ветку внутри одной.
+         * Постраничное чтение и непрерывная лента — разные способы
+         * показа: у ленты единица измерения пиксель прокрутки, у
+         * страниц — сама страница, и горизонтальный жест означает у
+         * них противоположное. До этой правки постраничные режимы
+         * выбирались в настройках и не были реализованы вовсе: что
+         * RTL, что LTR давали ту же вертикальную ленту.
+         */
+        if (state.settings.readingMode.isPaged) {
+            PagedReaderScreen(
+                items = state.items,
+                onViewportSettled = viewModel::onViewportSettled,
+                bitmapProvider = object : PagedReaderView.PageBitmapProvider {
+                    override fun bitmapFor(item: com.mangareader.reader.engine.layout.FeedItem.Page) =
+                        viewModel.bitmapFor(item)
+                },
+                onLayoutWidth = viewModel::onLayoutWidth,
+                onTap = viewModel::toggleChrome,
+                tapZoneScheme = state.settings.tapZoneScheme,
+                isRtl = state.settings.readingMode.isRtl,
+                scrollToIndex = state.pendingScrollIndex,
+                onScrollHandled = viewModel::onScrollHandled,
+            )
+        } else {
+            WebtoonReaderScreen(
+                items = state.items,
+                translationMode = state.translationMode,
+                onViewportSettled = viewModel::onViewportSettled,
+                bitmapProvider = object : WebtoonFeedView.PageBitmapProvider {
+                    override fun bitmapFor(item: com.mangareader.reader.engine.layout.FeedItem.Page) =
+                        viewModel.bitmapFor(item)
+                },
+                onLayoutWidth = viewModel::onLayoutWidth,
+                onTap = viewModel::toggleChrome,
+                tapZoneScheme = state.settings.tapZoneScheme,
+                isRtl = state.settings.readingMode.isRtl,
+                scrollToIndex = state.pendingScrollIndex,
+                onScrollHandled = viewModel::onScrollHandled,
+            )
+        }
 
         if (state.loading && state.items.isEmpty() && state.error == null) {
             Text(
