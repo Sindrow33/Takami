@@ -12,6 +12,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import core.engine.ParserStats
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,16 +42,14 @@ fun HomeScreen(
     onOpenLibrary: () -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var feed by androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf<LibraryFeed.Feed?>(null)
-    }
+    var feed by remember { mutableStateOf<LibraryFeed.Feed?>(null) }
 
     /*
      * Наполнение читается с диска при каждом показе экрана: папка могла
      * смениться, главы могли дочитаться. Обход идёт через content://,
      * поэтому вне главного потока.
      */
-    androidx.compose.runtime.LaunchedEffect(Unit) {
+    LaunchedEffect(Unit) {
         feed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             LibraryFeed.load(context)
         }
