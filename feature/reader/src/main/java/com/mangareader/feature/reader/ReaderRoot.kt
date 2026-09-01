@@ -47,6 +47,7 @@ import com.mangareader.reader.ui.compose.PagedReaderScreen
 import com.mangareader.reader.ui.compose.WebtoonReaderScreen
 import com.mangareader.reader.ui.view.PagedReaderView
 import com.mangareader.reader.ui.view.WebtoonFeedView
+import com.mangareader.translate.api.TranslationAvailability
 import com.mangareader.translate.api.TranslationMode
 import dev.takami.app.ui.theme.Aurora
 
@@ -179,6 +180,8 @@ fun ReaderRoot(
         ) {
             ReaderBottomBar(
                 mode = state.translationMode,
+                availability = state.translationAvailability,
+                onDownloadModel = { viewModel.downloadTranslationModel(allowMetered = true) },
                 onModeChange = viewModel::setTranslationMode,
                 page = state.currentPage,
                 total = state.totalPagesInChapter,
@@ -247,6 +250,8 @@ private fun ReaderTopBar(
 @Composable
 private fun ReaderBottomBar(
     mode: TranslationMode,
+    availability: TranslationAvailability,
+    onDownloadModel: () -> Unit,
     onModeChange: (TranslationMode) -> Unit,
     page: Int,
     total: Int,
@@ -265,6 +270,10 @@ private fun ReaderBottomBar(
         if (total > 1) {
             PageSlider(page = page, total = total, isRtl = isRtl, onSeek = onSeek)
         }
+        // Причина недоступности перевода показывается прямо здесь, над
+        // переключателем режимов. Молча неактивные кнопки заставляли бы
+        // человека гадать, почему ничего не происходит.
+        TranslationStatus(availability = availability, onDownload = onDownloadModel)
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -275,6 +284,7 @@ private fun ReaderBottomBar(
                     ModeChip(
                         label = entry.label(),
                         selected = entry == mode,
+                        enabled = entry == TranslationMode.ORIGINAL || availability.isReady,
                         onClick = { onModeChange(entry) },
                     )
                 }
@@ -462,17 +472,28 @@ private fun SettingToggle(
 }
 
 @Composable
-private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun ModeChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
     Box(
         Modifier
             .clip(RoundedCornerShape(Aurora.RadiusFull))
             .background(if (selected) Aurora.Acc else Aurora.Sub)
-            .clickable(onClick = onClick)
+            .let { if (enabled) it.clickable(onClick = onClick) else it }
             .padding(horizontal = 14.dp, vertical = 8.dp),
     ) {
         Text(
             label,
-            color = if (selected) Aurora.OnPrimary else Aurora.OnSurfaceVariant,
+            color = when {
+                selected -> Aurora.OnPrimary
+                // Приглушённый, но видимый: недоступный режим должен
+                // читаться как «пока нельзя», а не исчезать.
+                !enabled -> Aurora.OnSurfaceVariant.copy(alpha = .4f)
+                else -> Aurora.OnSurfaceVariant
+            },
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
         )
@@ -609,3 +630,59 @@ private fun ChapterNavRow(
         )
     }
 }
+
+/**
+ * Строка состояния перевода.
+ *
+ * Показывается только когда есть что сказать: у готового перевода
+ * собственной строки нет — работающая функция не нуждается в подписи о
+ * том, что она работает.
+ */
+@Composable
+private fun TranslationStatus(
+    availability: TranslationAvailability,
+    onDownload: () -> Unit,
+) {
+    val message = when (availability) {
+        is TranslationAvailability.Ready -> null
+        is TranslationAvailability.NeedsDownload ->
+            "Перевод: нужна загрузка ${formatBytes(availability.sizeBytes)}" +
+                if (availability.meteredWarning) " (мобильная сеть)" else ""
+        is TranslationAvailability.Downloading ->
+            availability.progress
+                ?.let { "Загрузка модели — ${(it * 100).toInt()}%" }
+                ?: "Загрузка модели…"
+        is TranslationAvailability.DownloadFailed -> "Перевод недоступен: ${availability.reason}"
+        is TranslationAvailability.Unsupported ->
+            "Перевод для этого языка не поддерживается"
+        is TranslationAvailability.DeviceUnsupported -> "Перевод недоступен: ${availability.reason}"
+    } ?: return
+
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            message,
+            color = Aurora.OnSurfaceVariant,
+            fontSize = 11.sp,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        if (availability.canDownload) {
+            Text(
+                "Скачать",
+                color = Aurora.Acc2,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(Aurora.RadiusFull))
+                    .clickable(onClick = onDownload)
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
+private fun formatBytes(bytes: Long): String =
+    com.mangareader.translate.api.ModelDownloadPolicy.formatSize(bytes)

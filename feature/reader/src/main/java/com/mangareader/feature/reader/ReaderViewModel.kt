@@ -19,7 +19,9 @@ import com.mangareader.reader.engine.layout.FeedItem
 import com.mangareader.reader.engine.layout.PageState
 import com.mangareader.reader.engine.settings.ReaderSettings
 import com.mangareader.reader.engine.settings.ReaderSettingsStore
+import com.mangareader.translate.api.TranslationAvailability
 import com.mangareader.translate.api.TranslationMode
+import com.mangareader.translate.api.TranslationModelProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -68,6 +70,13 @@ data class ReaderUiState(
     val chapterListVisible: Boolean = false,
     /** Соседние главы для панели: id и номер, в порядке чтения. */
     val chapterNav: ChapterNav = ChapterNav(),
+    /**
+     * Доступен ли перевод. Показывается явно: молча отключённая кнопка
+     * заставляет гадать, что сделано не так, а состояние с причиной
+     * отвечает на это само.
+     */
+    val translationAvailability: TranslationAvailability =
+        TranslationAvailability.DeviceUnsupported("Проверка…"),
 ) {
     /**
      * Индексы элементов текущей главы в ленте — область, по которой
@@ -94,6 +103,7 @@ class ReaderViewModel(
      * сетевом источнике это полная перезагрузка.
      */
     private val diskCache: DiskLruPageCache? = null,
+    private val modelProvider: TranslationModelProvider? = null,
 ) : ViewModel() {
 
     private val feed = FeedController(
@@ -171,6 +181,25 @@ class ReaderViewModel(
 
                 if (firstItems) {
                     ensureWindowDecoded(indexOfPage(current.orEmpty(), startPageRequested))
+                }
+            }
+        }
+        modelProvider?.let { provider ->
+            viewModelScope.launch {
+                provider.availability.collect { availability ->
+                    // Режим перевода откатывается сам, если модель
+                    // пропала: иначе читалка осталась бы в состоянии
+                    // «заменять» без того, чем заменять.
+                    val mode = _state.value.translationMode
+                    val fallback = if (!availability.isReady && mode != TranslationMode.ORIGINAL) {
+                        TranslationMode.ORIGINAL
+                    } else {
+                        mode
+                    }
+                    _state.value = _state.value.copy(
+                        translationAvailability = availability,
+                        translationMode = fallback,
+                    )
                 }
             }
         }
@@ -332,8 +361,23 @@ class ReaderViewModel(
 
     private var navRequestedFor: String? = null
 
+    /**
+     * Смена режима перевода.
+     *
+     * Переключение на перевод при недоступной модели не игнорируется
+     * молча — иначе это ровно тот врущий элемент управления, который мы
+     * убирали в настройках читалки. Режим остаётся прежним, а причина
+     * уже видна в панели.
+     */
     fun setTranslationMode(mode: TranslationMode) {
+        if (mode != TranslationMode.ORIGINAL && !_state.value.translationAvailability.isReady) return
         _state.value = _state.value.copy(translationMode = mode)
+    }
+
+    /** Начинает загрузку модели по явному действию пользователя. */
+    fun downloadTranslationModel(allowMetered: Boolean) {
+        val provider = modelProvider ?: return
+        viewModelScope.launch { provider.download(allowMetered) }
     }
 
     fun bitmapFor(item: FeedItem.Page): Bitmap? = bitmaps[item.pageRef.id]
@@ -510,11 +554,12 @@ class ReaderViewModel(
         private val settingsStore: ReaderSettingsStore = ReaderSettingsStore.None,
         private val seriesId: String = "",
         private val diskCache: DiskLruPageCache? = null,
+        private val modelProvider: TranslationModelProvider? = null,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             ReaderViewModel(
-                source, chapterLookup, eventBus, settingsStore, seriesId, diskCache,
+                source, chapterLookup, eventBus, settingsStore, seriesId, diskCache, modelProvider,
             ) as T
     }
 }
