@@ -67,8 +67,8 @@ class NovelLibraryTest {
         // Отрезаем последний байт многобайтового символа.
         val truncated = full.copyOf(full.size - 1)
         assertTrue(
-            NovelLibrary.isValidUtf8(truncated),
             "иначе любой русский текст в UTF-8 через раз определялся бы как 1251",
+            NovelLibrary.isValidUtf8(truncated),
         )
     }
 }

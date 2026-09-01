@@ -96,6 +96,7 @@ fun NovelReaderScreen(
      * каждый кадр.
      */
     LaunchedEffect(chapter.id) {
+        @OptIn(kotlinx.coroutines.FlowPreview::class)
         snapshotFlow { listState.firstVisibleItemIndex }
             .debounce(POSITION_SAVE_DELAY_MS)
             .collect { index ->
