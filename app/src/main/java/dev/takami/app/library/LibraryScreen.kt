@@ -37,8 +37,11 @@ import kotlinx.coroutines.withContext
  * Онлайн-каталог сюда встанет тем же списком, когда парсер отдаст свой
  * `MangaPageSource` — экран работает через тот же реестр источников.
  */
+/** Что показывает раздел библиотеки. */
+enum class LibraryContent { Manga, Novel }
+
 @Composable
-fun LibraryScreen() {
+fun LibraryScreen(content: LibraryContent = LibraryContent.Manga) {
     val context = LocalContext.current
     val root = remember { LibraryRoot(context) }
     var titles by remember { mutableStateOf<List<LocalLibrary.Title>>(emptyList()) }
@@ -66,13 +69,13 @@ fun LibraryScreen() {
         }
     }
 
-    LaunchedEffect(rescan) {
+    LaunchedEffect(rescan, content) {
         titles = withContext(Dispatchers.IO) {
-            val tree = root.selectedTree()
-            // Текстовые тайтлы идут тем же списком: для читателя это
-            // одна библиотека, а чем открывать — решает сама глава.
-            LocalLibrary.allTitles(context) +
-                (tree?.let { NovelLibrary.titles(context, it) } ?: emptyList())
+            when (content) {
+                LibraryContent.Manga -> LocalLibrary.allTitles(context)
+                LibraryContent.Novel ->
+                    root.selectedTree()?.let { NovelLibrary.titles(context, it) }.orEmpty()
+            }
         }
         scanned = true
     }
@@ -94,6 +97,7 @@ fun LibraryScreen() {
             path = root.displayPath(),
             folderChosen = root.selectedTree() != null,
             selectionLost = root.hasStaleSelection(),
+            content = content,
             onPick = { picker.launch(null) },
         )
         else -> TitleList(
@@ -265,6 +269,7 @@ private fun EmptyLibrary(
     path: String,
     folderChosen: Boolean,
     selectionLost: Boolean,
+    content: LibraryContent,
     onPick: () -> Unit,
 ) {
     Column(
@@ -281,6 +286,9 @@ private fun EmptyLibrary(
                 selectionLost ->
                     "Выбранная папка больше недоступна — её удалили, извлекли карту или отозвали доступ. " +
                         "Выберите папку заново."
+                folderChosen && content == LibraryContent.Novel ->
+                    "В папке «$path» текстовых глав не нашлось. Ожидаемая раскладка: " +
+                        "Название/Глава.txt (также .md)."
                 folderChosen ->
                     "В папке «$path» глав не нашлось. Ожидаемая раскладка: " +
                         "Название/Глава/0001.jpg или Название/Глава.cbz."

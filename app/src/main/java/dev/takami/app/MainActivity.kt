@@ -120,7 +120,12 @@ private fun MainShell(parser: ParserState) {
             label = "screen",
         ) { current ->
             when (current) {
-                Tab.Home -> HomeScreen(parserStats)
+                Tab.Home -> HomeScreen(
+                    parserStats = parserStats,
+                    // Пустая главная ведёт туда, где проблему можно
+                    // решить, а не просто сообщает о ней.
+                    onOpenLibrary = { tab = Tab.Library },
+                )
                 Tab.Library -> LibraryTabs(onImmersive = { immersive = it })
                 Tab.Swipes -> SwipesScreen()
                 Tab.Calendar -> CalendarScreen()
