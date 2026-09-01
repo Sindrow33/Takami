@@ -35,7 +35,7 @@ import dev.takami.app.ui.theme.Aurora
  * аниме и манга — это одна и та же локальная библиотека, просто разного
  * типа контента. Переключатель здесь дешевле и честнее.
  */
-private enum class Kind { Manga, Anime }
+private enum class Kind { Manga, Novel, Anime }
 
 @Composable
 fun LibraryTabs(onImmersive: (Boolean) -> Unit = {}) {
@@ -58,11 +58,19 @@ fun LibraryTabs(onImmersive: (Boolean) -> Unit = {}) {
                 .padding(4.dp),
         ) {
             Segment("Манга", kind == Kind.Manga, Modifier.weight(1f)) { kind = Kind.Manga }
+            Segment("Ранобэ", kind == Kind.Novel, Modifier.weight(1f)) { kind = Kind.Novel }
             Segment("Аниме", kind == Kind.Anime, Modifier.weight(1f)) { kind = Kind.Anime }
         }
 
         when (kind) {
-            Kind.Manga -> LibraryScreen()
+            /*
+             * Разделы отличаются не оформлением, а тем, что считать
+             * содержимым: манга — папки со страницами и CBZ, ранобэ —
+             * текстовые файлы. Одним списком они путались бы: тайтл с
+             * главами обоих видов выглядел бы наполовину сломанным.
+             */
+            Kind.Manga -> LibraryScreen(content = LibraryContent.Manga)
+            Kind.Novel -> LibraryScreen(content = LibraryContent.Novel)
             /*
              * Плеер читает выбранную папку через content:// напрямую —
              * серию копировать нельзя, это сотни мегабайт на просмотр.

@@ -12,6 +12,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import core.engine.ParserStats
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,8 +38,23 @@ import java.util.Calendar
 @Composable
 fun HomeScreen(
     parserStats: ParserStats = ParserStats.EMPTY,
-    onOpenTitle: (Int) -> Unit = {},
+    onOpenTitle: (String) -> Unit = {},
+    onOpenLibrary: () -> Unit = {},
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var feed by remember { mutableStateOf<LibraryFeed.Feed?>(null) }
+
+    /*
+     * Наполнение читается с диска при каждом показе экрана: папка могла
+     * смениться, главы могли дочитаться. Обход идёт через content://,
+     * поэтому вне главного потока.
+     */
+    LaunchedEffect(Unit) {
+        feed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            LibraryFeed.load(context)
+        }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -44,15 +64,95 @@ fun HomeScreen(
     ) {
         TopBar(parserStats)
         Spacer(Modifier.height(16.dp))
-        HeroContinue(MockDb.hero, onOpenTitle)
+
+        val loaded = feed
+        when {
+            loaded == null -> Unit // первый кадр: ничего не выдумываем
+
+            loaded.isEmpty -> {
+                QuickActions()
+                Spacer(Modifier.height(24.dp))
+                /*
+                 * Честное пустое состояние вместо выдуманных карточек.
+                 * Красивая главная на моках дважды была принята за
+                 * работающее приложение — пустой экран, который
+                 * объясняет, чего не хватает, полезнее.
+                 */
+                EmptyHome(
+                    folderChosen = loaded.folderChosen,
+                    hasSources = loaded.hasSources,
+                    onOpenLibrary = onOpenLibrary,
+                )
+            }
+
+            else -> {
+                loaded.hero?.let { hero ->
+                    HeroContinue(hero, onOpenTitle)
+                    Spacer(Modifier.height(20.dp))
+                }
+                QuickActions()
+                Spacer(Modifier.height(24.dp))
+                Rail("Продолжить", loaded.continueReading, onOpenTitle)
+                Rail("Манга", loaded.manga, onOpenTitle)
+                Rail("Ранобэ", loaded.novels, onOpenTitle)
+                Rail("Аниме", loaded.anime, onOpenTitle)
+            }
+        }
+    }
+}
+
+/**
+ * Что показать, когда показывать нечего.
+ *
+ * Текст зависит от того, чего именно не хватает: совет «выберите папку»
+ * человеку, который её уже выбрал, выглядит как неисправность.
+ */
+@Composable
+private fun EmptyHome(
+    folderChosen: Boolean,
+    hasSources: Boolean,
+    onOpenLibrary: () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "Пока пусто",
+            color = Aurora.OnSurface,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            when {
+                !folderChosen ->
+                    "Выберите папку с мангой или ранобэ — главы появятся здесь. " +
+                        "Онлайн-тайтлы добавятся, когда разберёте сайт в настройках."
+                !hasSources ->
+                    "В выбранной папке глав не нашлось. Ожидаемая раскладка: " +
+                        "Название/Глава/0001.jpg, Название/Глава.cbz или Название/Глава.txt."
+                else ->
+                    "Источник разобран, но тайтлов пока нет. Откройте каталог источника, " +
+                        "чтобы добавить первый."
+            },
+            color = Aurora.OnSurfaceVariant,
+            fontSize = 13.sp,
+            lineHeight = 20.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
         Spacer(Modifier.height(20.dp))
-        QuickActions()
-        Spacer(Modifier.height(24.dp))
-        NewsRail()
-        Rail("Продолжить", MockDb.continueReading, onOpenTitle)
-        Rail("Манга", MockDb.byType(ContentType.Manga), onOpenTitle)
-        Rail("Аниме", MockDb.byType(ContentType.Anime), onOpenTitle)
-        Rail("Ранобэ", MockDb.byType(ContentType.Novel), onOpenTitle)
+        Text(
+            if (folderChosen) "Открыть библиотеку" else "Выбрать папку",
+            color = Color.Black,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(Aurora.RadiusFull))
+                .background(Aurora.Acc2)
+                .clickable(onClick = onOpenLibrary)
+                .padding(horizontal = 22.dp, vertical = 14.dp),
+        )
     }
 }
 
@@ -102,18 +202,22 @@ private fun TopBar(parserStats: ParserStats) {
 }
 
 @Composable
-private fun HeroContinue(item: TitleItem, onOpen: (Int) -> Unit) {
+private fun HeroContinue(item: LibraryFeed.TitleCardData, onOpen: (String) -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .height(220.dp)
             .clip(RoundedCornerShape(Aurora.RadiusL))
-            .background(Brush.linearGradient(listOf(item.coverA, item.coverB)))
+            // Обложек у локальных файлов нет. Цвет выводится из имени,
+            // чтобы карточки различались между собой и не прыгали от
+            // запуска к запуску — это плейсхолдер, а не выдуманная
+            // картинка.
+            .background(Brush.linearGradient(coverColors(item.title, item.kind)))
             .clickable { onOpen(item.id) }
     ) {
         Pill(
-            "Продолжить · ${item.type.label}",
+            "Продолжить · ${item.kind.label}",
             Modifier.align(Alignment.TopStart).padding(12.dp),
         )
         Column(
@@ -126,8 +230,10 @@ private fun HeroContinue(item: TitleItem, onOpen: (Int) -> Unit) {
                 .border(1.dp, Aurora.Brd, RoundedCornerShape(Aurora.RadiusM))
                 .padding(12.dp)
         ) {
-            Text(item.name, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-            Text(item.subtitle, color = Color.White.copy(alpha = .78f), fontSize = 11.sp)
+            Text(item.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            item.subtitle?.let {
+                Text(it, color = Color.White.copy(alpha = .78f), fontSize = 11.sp)
+            }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(
@@ -150,11 +256,11 @@ private fun HeroContinue(item: TitleItem, onOpen: (Int) -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Icon(
-                    if (item.type == ContentType.Anime) TakamiIcon.Play else TakamiIcon.Book,
+                    if (item.kind == ContentType.Anime) TakamiIcon.Play else TakamiIcon.Book,
                     Modifier.size(15.dp), Color.White,
                 )
                 Text(
-                    if (item.type == ContentType.Anime) "Смотреть" else "Читать",
+                    if (item.kind == ContentType.Anime) "Смотреть" else "Читать",
                     color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 )
             }
@@ -210,7 +316,11 @@ private fun QuickActions() {
 }
 
 @Composable
-private fun Rail(title: String, items: List<TitleItem>, onOpen: (Int) -> Unit) {
+private fun Rail(
+    title: String,
+    items: List<LibraryFeed.TitleCardData>,
+    onOpen: (String) -> Unit,
+) {
     if (items.isEmpty()) return
     Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
         SectionHeader(title)
@@ -225,24 +335,24 @@ private fun Rail(title: String, items: List<TitleItem>, onOpen: (Int) -> Unit) {
 }
 
 @Composable
-private fun TitleCard(item: TitleItem, onOpen: (Int) -> Unit) {
+private fun TitleCard(item: LibraryFeed.TitleCardData, onOpen: (String) -> Unit) {
     Column(Modifier.width(108.dp).clickable { onOpen(item.id) }) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .height(144.dp)
                 .clip(RoundedCornerShape(Aurora.RadiusM))
-                .background(Brush.linearGradient(listOf(item.coverA, item.coverB)))
+                .background(Brush.linearGradient(coverColors(item.title, item.kind)))
         ) {
             Icon(
-                when (item.type) {
+                when (item.kind) {
                     ContentType.Anime -> TakamiIcon.Play
                     else -> TakamiIcon.Book
                 },
                 Modifier.align(Alignment.TopStart).padding(6.dp).size(14.dp),
                 Color.White.copy(alpha = .85f),
             )
-            if (item.newChapters > 0) {
+            if (item.badgeCount > 0) {
                 Box(
                     Modifier
                         .align(Alignment.TopEnd)
@@ -251,17 +361,48 @@ private fun TitleCard(item: TitleItem, onOpen: (Int) -> Unit) {
                         .background(Aurora.Acc)
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text("${item.newChapters}", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("${item.badgeCount}", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
             if (item.progress > 0f) {
                 Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(2.dp).background(Color(0x33FFFFFF))) {
-                    Box(Modifier.fillMaxWidth(item.progress).height(2.dp).background(item.type.color))
+                    Box(Modifier.fillMaxWidth(item.progress).height(2.dp).background(item.kind.color))
                 }
             }
         }
         Spacer(Modifier.height(6.dp))
-        Text(item.name, color = Color.White, fontSize = 12.sp, maxLines = 2, lineHeight = 16.sp)
-        Text("★ ${item.rating}", color = Aurora.OnSurfaceVariant, fontSize = 10.sp)
+        Text(item.title, color = Color.White, fontSize = 12.sp, maxLines = 2, lineHeight = 16.sp)
+        // Рейтинга у локального файла нет, и «★ —» было бы такой же
+        // выдумкой, как «★ 8.7»: подпись просто не рисуется.
+        item.rating?.let {
+            Text("★ $it", color = Aurora.OnSurfaceVariant, fontSize = 10.sp)
+        } ?: item.subtitle?.let {
+            Text(it, color = Aurora.OnSurfaceVariant, fontSize = 10.sp, maxLines = 1)
+        }
     }
+}
+
+/**
+ * Цвета плейсхолдера обложки.
+ *
+ * Выводятся из названия, а не берутся случайно: карточка должна
+ * выглядеть одинаково при каждом запуске, иначе библиотека «мерцает»
+ * разными цветами на одних и тех же тайтлах. Оттенок задаёт тип
+ * контента — так манга, ранобэ и аниме различимы без подписи.
+ */
+private fun coverColors(title: String, kind: ContentType): List<Color> {
+    val hash = title.fold(0) { acc, ch -> acc * 31 + ch.code }
+    val palette = when (kind) {
+        ContentType.Manga -> listOf(
+            Color(0xFF4C1D95), Color(0xFF134E4A), Color(0xFF7C2D12), Color(0xFF1E3A8A),
+        )
+        ContentType.Novel -> listOf(
+            Color(0xFF5B21B6), Color(0xFF831843), Color(0xFF3F3F46), Color(0xFF14532D),
+        )
+        ContentType.Anime -> listOf(
+            Color(0xFF0C4A6E), Color(0xFF701A75), Color(0xFF854D0E), Color(0xFF1E293B),
+        )
+    }
+    val top = palette[Math.floorMod(hash, palette.size)]
+    return listOf(top, Color(0xFF141821))
 }
