@@ -18,7 +18,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import core.engine.ParserStats
 import dev.takami.app.data.TakamiPrefs
 import dev.takami.app.parser.ParserState
@@ -68,6 +71,28 @@ fun TakamiApp(prefs: TakamiPrefs, parser: ParserState) {
 private fun MainShell(parser: ParserState) {
     var tab by remember { mutableStateOf(Tab.Home) }
     var fabLoading by remember { mutableStateOf(false) }
+    /*
+     * Полноэкранный режим: во время видео нижней панели нет, а экран
+     * разворачивается горизонтально. Ориентацией и системными полосами
+     * управляет активити, поэтому решение принимается здесь, а плеер
+     * только сообщает, что идёт воспроизведение.
+     */
+    var immersive by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    LaunchedEffect(immersive) {
+        val activity = context as? android.app.Activity ?: return@LaunchedEffect
+        activity.requestedOrientation = if (immersive) {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+        WindowInsetsControllerCompat(activity.window, activity.window.decorView).apply {
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (immersive) hide(WindowInsetsCompat.Type.systemBars())
+            else show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
 
     // Сводка автопарсера читается с диска — обновляем при возврате на главную.
     var parserStats by remember { mutableStateOf(ParserStats.EMPTY) }
@@ -96,7 +121,7 @@ private fun MainShell(parser: ParserState) {
         ) { current ->
             when (current) {
                 Tab.Home -> HomeScreen(parserStats)
-                Tab.Library -> LibraryTabs()
+                Tab.Library -> LibraryTabs(onImmersive = { immersive = it })
                 Tab.Swipes -> SwipesScreen()
                 Tab.Calendar -> CalendarScreen()
                 Tab.Settings -> SettingsScreen()
@@ -105,7 +130,7 @@ private fun MainShell(parser: ParserState) {
 
         // Отступ под системную навигацию теперь внутри TabBar: он
         // обязан быть под фоном панели, а не поднимать её над полосой.
-        Box(Modifier.align(Alignment.BottomCenter)) {
+        if (!immersive) Box(Modifier.align(Alignment.BottomCenter)) {
             TabBar(
                 active = tab,
                 fabLoading = fabLoading,

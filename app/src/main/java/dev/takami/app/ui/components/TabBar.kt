@@ -60,7 +60,7 @@ fun TabBar(
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(72.dp)
+                .height(62.dp)
                 .border(1.dp, Aurora.Brd)
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -71,7 +71,7 @@ fun TabBar(
             TabItem(TakamiIcon.Calendar, "Календарь", active == Tab.Calendar, Modifier.weight(1f), badge = calendarBadge) { onSelect(Tab.Calendar) }
             TabItem(TakamiIcon.Settings, "Настройки", active == Tab.Settings, Modifier.weight(1f)) { onSelect(Tab.Settings) }
         }
-        Fab(fabLoading, Modifier.align(Alignment.TopCenter).offset(y = (-46).dp), onFab)
+        Fab(fabLoading, Modifier.align(Alignment.TopCenter).offset(y = (-34).dp), onFab)
     }
 }
 

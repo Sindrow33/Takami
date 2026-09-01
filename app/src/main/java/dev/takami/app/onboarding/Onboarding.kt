@@ -210,7 +210,7 @@ private data class Perm(val key: String, val icon: TakamiIcon, val title: String
 private fun PermsScreen(perms: MutableMap<String, Boolean>, onNext: () -> Unit) {
     val list = listOf(
         Perm("notify", TakamiIcon.Bell, "Уведомления", "Новые главы и эпизоды, статус загрузок"),
-        Perm("storage", TakamiIcon.Folder, "Хранилище", "Офлайн-главы, кеш обложек, резервные копии"),
+        Perm("storage", TakamiIcon.Folder, "Папка с контентом", "Откуда читать главы и куда сохранять скачанное"),
         Perm("battery", TakamiIcon.Battery, "Без экономии батареи", "Чтобы фоновые загрузки не обрывались"),
     )
     val context = LocalContext.current
@@ -226,9 +226,22 @@ private fun PermsScreen(perms: MutableMap<String, Boolean>, onNext: () -> Unit) 
         ActivityResultContracts.RequestPermission()
     ) { perms["notify"] = it }
 
-    val storageLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { result -> perms["storage"] = result.values.any { it } }
+    /*
+     * Хранилище — это НЕ runtime-разрешение начиная с Android 11:
+     * запрос WRITE_EXTERNAL_STORAGE система игнорирует, и карточка
+     * «выдавала» доступ, которого нет. Пользователю при этом нужен не
+     * флаг, а ответ на вопрос «откуда читать и куда сохранять»,
+     * поэтому карточка открывает выбор папки.
+     */
+    val root = remember { LibraryRoot(context) }
+    val treeLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            root.select(uri)
+            perms["storage"] = true
+        }
+    }
 
     // Отключение экономии батареи и доступ ко всем файлам — не runtime-
     // разрешения: их нельзя запросить диалогом, только увести в настройки.
@@ -240,7 +253,7 @@ private fun PermsScreen(perms: MutableMap<String, Boolean>, onNext: () -> Unit) 
     // разрешение снаружи, и экран обязан показывать правду, а не память.
     LaunchedEffect(Unit) {
         perms["notify"] = context.hasNotificationPermission()
-        perms["storage"] = context.hasStoragePermission()
+        perms["storage"] = root.selectedTree() != null
         perms["battery"] = context.isIgnoringBatteryOptimizations()
     }
 
@@ -253,20 +266,7 @@ private fun PermsScreen(perms: MutableMap<String, Boolean>, onNext: () -> Unit) 
                     // До Android 13 разрешение выдаётся установкой приложения.
                     perms["notify"] = true
                 }
-            "storage" ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    // Scoped storage: приложению хватает своего каталога,
-                    // спрашивать WRITE_EXTERNAL_STORAGE бессмысленно —
-                    // система его просто игнорирует.
-                    perms["storage"] = true
-                } else {
-                    storageLauncher.launch(
-                        arrayOf(
-                            Manifest.permission.READ_EXTERNAL_STORAGE,
-                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                        )
-                    )
-                }
+            "storage" -> treeLauncher.launch(null)
             "battery" -> batteryLauncher.launch(context.batteryOptimizationIntent())
         }
     }
@@ -466,7 +466,7 @@ private fun WelcomeScreen(onDone: () -> Unit) {
         Column(
             Modifier
                 .align(Alignment.TopStart)
-                .padding(top = 132.dp, start = 20.dp)
+                .padding(top = 172.dp, start = 20.dp)
                 .widthIn(max = 190.dp)
                 .scale(1f + bubbleWiggle * 0.004f)
                 .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 4.dp, bottomStart = 20.dp))

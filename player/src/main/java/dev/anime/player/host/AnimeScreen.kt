@@ -65,6 +65,12 @@ fun AnimeScreen(
     contentTree: Uri? = null,
     /** Запасной путь на диске; используется, когда папка не выбрана. */
     contentRoot: File? = null,
+    /**
+     * Идёт ли воспроизведение. Хост по этому флагу убирает нижнюю панель
+     * и разворачивает экран горизонтально: панель и портрет — это
+     * оболочка приложения, плеер про них знать не должен.
+     */
+    onPlayingChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val progress = remember { WatchProgressStore(context) }
@@ -89,6 +95,11 @@ fun AnimeScreen(
     var progressStamp by remember { mutableStateOf(0) }
 
     val episode = playing
+    // Сообщаем хосту о входе и выходе из плеера одним местом: иначе
+    // выход по системной кнопке «назад» оставил бы панель скрытой.
+    LaunchedEffect(episode?.id) { onPlayingChange(episode != null) }
+    DisposableEffect(Unit) { onDispose { onPlayingChange(false) } }
+
     if (titles == null) {
         Box(modifier.fillMaxSize().background(Aurora.Surface))
     } else if (episode == null) {

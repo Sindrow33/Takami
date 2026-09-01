@@ -61,6 +61,8 @@ dependencies {
     implementation(project(":source:web"))
     implementation(project(":player"))
     implementation(project(":feature:swipes"))
+    // Главы-архивы (CBZ) в выбранной папке распаковываются в приложении.
+    implementation(libs.zip4j)
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")
