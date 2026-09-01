@@ -174,7 +174,8 @@ class PagedReaderView @JvmOverloads constructor(
         val all = spreads()
         val position = SpreadPairing.spreadOf(all, index)
         val spread = position?.let { all[it] }
-        if (spread?.second == null) {
+        val second = spread?.second
+        if (spread == null || second == null) {
             drawPageAt(canvas, spread?.first ?: index, dx)
             return
         }
@@ -182,7 +183,7 @@ class PagedReaderView @JvmOverloads constructor(
         // В RTL первая по чтению половина — правая.
         val firstOnLeft = !isRtl
         drawPageAt(canvas, spread.first, dx + if (firstOnLeft) 0f else half, halfWidth = true)
-        drawPageAt(canvas, spread.second, dx + if (firstOnLeft) half else 0f, halfWidth = true)
+        drawPageAt(canvas, second, dx + if (firstOnLeft) half else 0f, halfWidth = true)
     }
 
     private fun drawPageAt(canvas: Canvas, index: Int, dx: Float, halfWidth: Boolean = false) {
