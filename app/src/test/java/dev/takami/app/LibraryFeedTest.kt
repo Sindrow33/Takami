@@ -27,7 +27,7 @@ class LibraryFeedTest {
             hasSources = false,
         )
         assertTrue(feed.isEmpty)
-        assertNull(feed.hero, "hero из пустой ленты — это как раз выдуманная карточка")
+        assertNull("hero из пустой ленты — это как раз выдуманная карточка", feed.hero)
     }
 
     @Test
@@ -40,7 +40,7 @@ class LibraryFeedTest {
             folderChosen = true,
             hasSources = false,
         )
-        assertTrue(!feed.isEmpty, "раздел ранобэ — такое же наполнение, как манга")
+        assertTrue("раздел ранобэ — такое же наполнение, как манга", !feed.isEmpty)
     }
 
     @Test
@@ -80,8 +80,8 @@ class LibraryFeedTest {
     @Test
     fun `у карточки без обложки нет заглушечной ссылки`() {
         assertNull(
-            card("manga:x").coverUrl,
             "фиктивный URL дал бы сломанную картинку вместо честного плейсхолдера",
+            card("manga:x").coverUrl,
         )
     }
 }
