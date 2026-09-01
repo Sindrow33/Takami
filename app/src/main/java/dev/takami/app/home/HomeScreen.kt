@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import dev.takami.app.news.DiscoveredNews
 import dev.takami.app.ui.components.Icon
 import dev.takami.app.ui.components.Pill
 import dev.takami.app.ui.components.Tab
@@ -43,6 +44,7 @@ fun HomeScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var feed by remember { mutableStateOf<LibraryFeed.Feed?>(null) }
+    var news by remember { mutableStateOf(newsFeed) }
 
     /*
      * Наполнение читается с диска при каждом показе экрана: папка могла
@@ -52,6 +54,31 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         feed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             LibraryFeed.load(context)
+        }
+    }
+
+    /*
+     * Новости не зависят от выбранной папки: их приносит автопарсер с
+     * разобранных лент, поэтому читаются отдельно и показываются в том
+     * числе на пустой главной — иначе человек без библиотеки не увидит
+     * единственное живое, что у приложения есть.
+     */
+    LaunchedEffect(Unit) {
+        news = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            NewsFeed.cards(DiscoveredNews(context).latest(NewsFeed.LIMIT))
+        }
+    }
+
+    val openNews: (NewsItem) -> Unit = { item ->
+        if (item.url.isNotEmpty()) {
+            runCatching {
+                context.startActivity(
+                    android.content.Intent(
+                        android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse(item.url),
+                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
         }
     }
 
@@ -72,6 +99,7 @@ fun HomeScreen(
             loaded.isEmpty -> {
                 QuickActions()
                 Spacer(Modifier.height(24.dp))
+                NewsRail(items = news, onOpen = openNews)
                 /*
                  * Честное пустое состояние вместо выдуманных карточек.
                  * Красивая главная на моках дважды была принята за
@@ -92,6 +120,7 @@ fun HomeScreen(
                 }
                 QuickActions()
                 Spacer(Modifier.height(24.dp))
+                NewsRail(items = news, onOpen = openNews)
                 Rail("Продолжить", loaded.continueReading, onOpenTitle)
                 Rail("Манга", loaded.manga, onOpenTitle)
                 Rail("Ранобэ", loaded.novels, onOpenTitle)
