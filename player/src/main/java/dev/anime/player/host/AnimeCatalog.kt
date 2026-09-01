@@ -32,6 +32,11 @@ object AnimeCatalog {
         val number: Int,
         val url: String,
         val isLocal: Boolean,
+        /**
+         * Имя файла с расширением. Нужно, чтобы найти субтитры рядом:
+         * у `content://` пути нет, а имя документа есть.
+         */
+        val fileName: String = "",
     )
 
     data class Title(
@@ -89,6 +94,7 @@ object AnimeCatalog {
                     number = episodeNumber(f.name) ?: 0,
                     url = f.toURI().toString(),
                     isLocal = true,
+                    fileName = f.name,
                 )
             }
             Title(id = dir.name, name = dir.name, episodes = sortEpisodes(episodes))
@@ -133,6 +139,7 @@ object AnimeCatalog {
                 number = episodeNumber(fileName) ?: 0,
                 url = f.uri.toString(),
                 isLocal = true,
+                fileName = fileName,
             )
         }
         return Title(id = name, name = name, episodes = sortEpisodes(episodes))

@@ -24,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +42,7 @@ import dev.takami.app.ui.theme.Aurora
 import java.io.File
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -152,9 +154,36 @@ private fun EpisodePlayer(
         progress.save(episode.id, state.positionMs, state.durationMs)
     }
 
+    // --- ИИ-озвучка ------------------------------------------------------
+    // Включается только вручную и только для скачанного файла: синтез стоит
+    // батарею и время, а по онлайн-потоку звуковую дорожку не получить.
+    val controller = remember { EnhancerController(context, context.cacheDir) }
+    var dubbing by remember(episode.id) { mutableStateOf<EnhancerController.Ready?>(null) }
+    var dubMessage by remember(episode.id) { mutableStateOf<String?>(null) }
+    var dubLoading by remember(episode.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    // Тик озвучки: enhancer двигает синтез вперёд позиции и приглушает
+    // оригинал, пока звучит реплика. Без этого вызова слой не работает —
+    // именно его и не было.
+    val ready = dubbing
+    LaunchedEffect(ready, state.positionMs / 500L) {
+        if (ready != null) {
+            ready.enhancer.onTick(state.positionMs, state.isPlaying, System.currentTimeMillis())
+        }
+    }
+    LaunchedEffect(ready, state.isPlaying) {
+        if (ready != null && !state.isPlaying) ready.enhancer.stopDubPlayback()
+    }
+
     DisposableEffect(episode.id) {
         onDispose {
             progress.save(episode.id, engine.state.value.positionMs, engine.state.value.durationMs)
+            dubbing?.let {
+                it.enhancer.stopDubPlayback()
+                it.audioPlayer.stop()
+                it.ttsProvider.release()
+            }
             engine.release()
         }
     }
@@ -170,6 +199,41 @@ private fun EpisodePlayer(
             // края и не скрывалась вместе с остальным интерфейсом.
             title = episode.title,
             onBack = onExit,
+            dubbingEnabled = ready != null,
+            dubbingLoading = dubLoading,
+            onToggleDubbing = {
+                val active = dubbing
+                if (active != null) {
+                    active.enhancer.stopDubPlayback()
+                    active.audioPlayer.stop()
+                    active.ttsProvider.release()
+                    engine.setVolume(1f)
+                    dubbing = null
+                    dubMessage = "Озвучка выключена"
+                } else {
+                    dubLoading = true
+                    scope.launch {
+                        val result = controller.prepareDubbing(
+                            engine = engine,
+                            episodeUrl = episode.url,
+                            episodeFileName = episode.fileName.ifEmpty { episode.title },
+                            languageCode = "ru-RU",
+                        )
+                        dubLoading = false
+                        when (result) {
+                            is EnhancerController.Result.Available -> {
+                                dubbing = result.ready
+                                dubMessage = "Озвучка включена: реплик " + result.ready.lineCount
+                            }
+                            is EnhancerController.Result.Unavailable -> {
+                                dubMessage = result.reason
+                            }
+                        }
+                    }
+                }
+            },
+            notice = dubMessage,
+            onNoticeDismiss = { dubMessage = null },
         )
     }
 }
