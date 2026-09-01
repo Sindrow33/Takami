@@ -9,7 +9,7 @@ on:
 # Ветка с открытым PR иначе собиралась дважды (push + pull_request);
 # оставляем только последний запуск на ref.
 concurrency:
-  group: app-${{ github.ref }}
+  group: app-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
