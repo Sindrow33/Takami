@@ -31,7 +31,6 @@ dependencies {
     implementation(project(":core:design"))
     implementation(project(":reader:engine"))
     implementation(project(":translate:api"))
-    implementation(project(":translate:render"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

@@ -81,3 +81,54 @@ class FeedControllerTest {
         assertTrue(!page.isHeightEstimated)
     }
 }
+
+/**
+ * Слайдер ездит по индексам ленты, а не по номерам страниц: лента
+ * сквозная и содержит соседние главы. Тут проверяется именно этот
+ * перевод — он единственный, где номер страницы и позиция расходятся.
+ */
+class ChapterPageIndexTest {
+
+    private fun controller(chapters: List<String>, pages: Int, scope: TestScope) = FeedController(
+        source = FakeSource(chapters, pages),
+        chapterLookup = { id -> ChapterInfo(id = id, mangaId = "m", number = chapters.indexOf(id) + 1f) },
+        scope = scope,
+    )
+
+    @Test
+    fun `первая глава серии смещена заглушкой, номер страницы не равен индексу`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val feed = controller(listOf("ch01", "ch02"), pages = 5, scope = this)
+            feed.start("ch01", 0)
+
+            val items = feed.state.value.items
+            // Сверху EndCap серии, поэтому страница 0 лежит по индексу 1.
+            assertTrue(items.first() is FeedItem.EndCap)
+            val firstPageIndex = items.indexOfFirst { it is FeedItem.Page }
+            assertEquals(1, firstPageIndex)
+            assertEquals(0, (items[firstPageIndex] as FeedItem.Page).pageRef.index)
+        }
+
+    @Test
+    fun `после догрузки главы её страницы нумеруются заново, а индексы продолжаются`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val feed = controller(listOf("ch01", "ch02"), pages = 5, scope = this)
+            feed.start("ch01", 0)
+            feed.onViewportMoved(feed.state.value.items.lastIndex)
+
+            val pages = feed.state.value.items.filterIsInstance<FeedItem.Page>()
+            val secondChapter = pages.filter { it.chapterId == "ch02" }
+            assertEquals(5, secondChapter.size)
+            assertEquals(
+                listOf(0, 1, 2, 3, 4),
+                secondChapter.map { it.pageRef.index },
+                "номера страниц второй главы обязаны начинаться с нуля",
+            )
+
+            // А индексы в ленте — сквозные, без разрывов.
+            val indices = feed.state.value.items.indices.filter {
+                (feed.state.value.items[it] as? FeedItem.Page)?.chapterId == "ch02"
+            }
+            assertEquals(indices, (indices.first()..indices.last()).toList())
+        }
+}

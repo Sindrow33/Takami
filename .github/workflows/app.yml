@@ -31,6 +31,19 @@ jobs:
         run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
       - name: Build Takami APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: APK size
+        run: |
+          echo "### Размер APK" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          du -h app/build/outputs/apk/debug/*.apk | sort -h >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "### Крупнейшее содержимое" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          for apk in app/build/outputs/apk/debug/*.apk; do
+            echo "== $apk"
+            unzip -l "$apk" | sort -k1 -n -r | head -12
+          done >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Test reports
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,7 +1,5 @@
 package com.mangareader.reader.engine.gesture
 
-import android.graphics.RectF
-
 /**
  * Configurable tap-zone schemes (§5.1): "L-shaped layout, edges, right
  * only, left only, disabled". Pure geometry — given a tap point and the
@@ -55,10 +53,20 @@ object TapZones {
         // Center rectangle toggles the menu; the surrounding L-shaped band
         // on each side (spanning from the top edge down to the bottom
         // edge, not just a thin vertical strip) triggers page turn.
-        val centerRect = RectF(0.30f, 0.20f, 0.70f, 0.80f)
-        if (centerRect.contains(x, y)) return TapAction.MENU
+        //
+        // Геометрия сознательно на голых Float, без android.graphics.RectF:
+        // класс чисто вычислительный, и зависимость от SDK делала его
+        // непроверяемым в JVM-тестах (RectF там — заглушка, бросающая
+        // «Stub!»).
+        val inCenter = x >= CENTER_LEFT && x <= CENTER_RIGHT && y >= CENTER_TOP && y <= CENTER_BOTTOM
+        if (inCenter) return TapAction.MENU
         return if (x < 0.5f) leftAction else rightAction
     }
+
+    private const val CENTER_LEFT = 0.30f
+    private const val CENTER_RIGHT = 0.70f
+    private const val CENTER_TOP = 0.20f
+    private const val CENTER_BOTTOM = 0.80f
 
     private fun resolveEdges(x: Float, leftAction: TapAction, rightAction: TapAction): TapAction = when {
         x < 0.2f -> leftAction
@@ -66,5 +74,3 @@ object TapZones {
         else -> TapAction.MENU
     }
 }
-
-private fun RectF.contains(x: Float, y: Float): Boolean = x >= left && x <= right && y >= top && y <= bottom

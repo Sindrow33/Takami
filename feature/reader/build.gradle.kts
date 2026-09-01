@@ -33,16 +33,20 @@ dependencies {
     api(project(":core:model"))
 
     implementation(project(":core:network"))
-    implementation(project(":core:database"))
+    // :core:database — только Room-конвертеры для кеша переводов;
+    // читалка их не использует, а транзитивный Room тянет в APK
+    // рантайм и сгенерированный код. Вернётся вместе со слоем перевода.
     implementation(project(":core:design"))
     implementation(project(":reader:engine"))
     implementation(project(":reader:ui"))
+    // Из всего слоя перевода читалке нужен ровно :translate:api —
+    // enum TranslationMode и типы блоков. Реализация (ONNX-рантайм,
+    // ML Kit, Room-кеш переводов) НЕ подключается: она не
+    // инстанцируется, но тянула в APK ~33 МБ нативных библиотек и
+    // десятки МБ dex. Подключать обратно — вместе с реальным
+    // включением перевода и только через доставку по требованию,
+    // см. docs/manga-reader/TRANSLATION-LAYER.md.
     implementation(project(":translate:api"))
-    implementation(project(":translate:core"))
-    implementation(project(":translate:mt"))
-    implementation(project(":translate:ocr"))
-    implementation(project(":translate:onnx"))
-    implementation(project(":translate:render"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

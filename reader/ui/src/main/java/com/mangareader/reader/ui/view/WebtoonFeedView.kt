@@ -15,6 +15,9 @@ import androidx.compose.ui.graphics.toArgb
 import dev.takami.app.ui.theme.Aurora
 import com.mangareader.reader.engine.gesture.PeekGestureController
 import com.mangareader.reader.engine.gesture.PeekPhase
+import com.mangareader.reader.engine.gesture.TapAction
+import com.mangareader.reader.engine.gesture.TapZoneScheme
+import com.mangareader.reader.engine.gesture.TapZones
 import com.mangareader.reader.engine.gesture.ZoomPanController
 import com.mangareader.reader.engine.layout.FeedItem
 import com.mangareader.reader.engine.layout.SeamlessLayoutEngine
@@ -72,8 +75,18 @@ class WebtoonFeedView @JvmOverloads constructor(
     var bitmapProvider: PageBitmapProvider? = null
     var onViewportSettled: ((centerGlobalIndex: Int) -> Unit)? = null
 
-    /** Одиночный тап по ленте — показать/скрыть хром (§5.1). */
+    /**
+     * Тап разрешается через [TapZones] (§5.1): центр переключает хром,
+     * боковые зоны листают. В непрерывной ленте «листание» — это скролл
+     * на экран, а не смена страницы: прыжок на фиксированную страницу
+     * порвал бы бесшовность, ради которой вся лента и сделана.
+     */
     var onTap: (() -> Unit)? = null
+
+    var tapZoneScheme: TapZoneScheme = TapZoneScheme.L_SHAPE
+
+    /** Направление чтения; зеркалит боковые зоны. */
+    var isRtl: Boolean = false
 
     private var layoutResult: SeamlessLayoutEngine.LayoutResult =
         SeamlessLayoutEngine.LayoutResult(emptyList(), 0)
@@ -191,7 +204,7 @@ class WebtoonFeedView @JvmOverloads constructor(
                     if (kotlin.math.abs(velocityY) > minFlingVelocity) fling(-velocityY.toInt())
                 } else if (phase != PeekPhase.RELEASED) {
                     performClick()
-                    onTap?.invoke()
+                    handleTap(event.x, event.y)
                 }
                 releaseTracker()
             }
@@ -203,6 +216,33 @@ class WebtoonFeedView @JvmOverloads constructor(
             }
         }
         return true
+    }
+
+    private fun handleTap(x: Float, y: Float) {
+        if (width <= 0 || height <= 0) return
+        val action = TapZones.resolve(
+            scheme = tapZoneScheme,
+            normalizedX = x / width,
+            normalizedY = y / height,
+            isRtl = isRtl,
+        )
+        when (action) {
+            TapAction.MENU -> onTap?.invoke()
+            // Лента непрерывна: «страница вперёд» — это экран вперёд.
+            TapAction.NEXT -> smoothScrollBy(pageStepPx())
+            TapAction.PREVIOUS -> smoothScrollBy(-pageStepPx())
+            TapAction.NONE -> Unit
+        }
+    }
+
+    /** Шаг листания: экран минус перекрытие, чтобы не терялась строка кадра. */
+    private fun pageStepPx(): Int = (height * 0.9f).toInt().coerceAtLeast(1)
+
+    private fun smoothScrollBy(dy: Int) {
+        val maxScroll = max(0, layoutResult.totalHeightPx - height)
+        val target = (scrollY + dy).coerceIn(0, maxScroll)
+        scroller.startScroll(0, scrollY, 0, target - scrollY, 240)
+        postInvalidateOnAnimation()
     }
 
     override fun performClick(): Boolean {
@@ -252,6 +292,21 @@ class WebtoonFeedView @JvmOverloads constructor(
         // calls invalidate() each frame in the full implementation.
         peekTranslationAlpha = targetAlpha
         invalidate()
+    }
+
+    /**
+     * Прыжок на элемент ленты по глобальному индексу — этим управляет
+     * слайдер страниц и восстановление позиции при открытии главы.
+     * Верхняя граница элемента, а не центр: страница должна начинаться
+     * от верхнего края экрана, как при обычном скролле.
+     */
+    fun scrollToIndex(globalIndex: Int) {
+        val entry = layoutResult.items.getOrNull(globalIndex) ?: return
+        val maxScroll = max(0, layoutResult.totalHeightPx - height)
+        scroller.forceFinished(true)
+        scrollY = entry.top.coerceIn(0, maxScroll)
+        invalidate()
+        reportSettledCenter()
     }
 
     fun scrollByPx(dy: Int) {
