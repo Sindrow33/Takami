@@ -58,6 +58,7 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":reader:engine"))
     implementation(project(":feature:reader"))
+    implementation(project(":source:web"))
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")
