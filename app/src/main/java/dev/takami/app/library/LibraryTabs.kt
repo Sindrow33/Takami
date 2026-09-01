@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,13 +38,18 @@ import dev.takami.app.ui.theme.Aurora
 private enum class Kind { Manga, Anime }
 
 @Composable
-fun LibraryTabs() {
+fun LibraryTabs(onImmersive: (Boolean) -> Unit = {}) {
     var kind by remember { mutableStateOf(Kind.Manga) }
     val context = LocalContext.current
     val root = remember { LibraryRoot(context) }
+    var playing by remember { mutableStateOf(false) }
+
+    // Во время просмотра переключателя тоже нет: он занимал бы верх
+    // экрана поверх видео.
+    LaunchedEffect(playing) { onImmersive(playing) }
 
     Column(Modifier.fillMaxSize().background(Aurora.Surface)) {
-        Row(
+        if (!playing) Row(
             Modifier
                 .fillMaxWidth()
                 .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp)
@@ -66,6 +72,7 @@ fun LibraryTabs() {
             Kind.Anime -> AnimeScreen(
                 contentTree = root.selectedTree(),
                 contentRoot = root.internalDir(),
+                onPlayingChange = { playing = it },
             )
         }
     }

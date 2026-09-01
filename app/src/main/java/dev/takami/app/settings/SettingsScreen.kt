@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mangareader.feature.reader.ReaderSourceRegistry
 import core.engine.ParserStats
+import dev.takami.app.parser.AutoParseScreen
 import dev.takami.app.parser.ParserState
 import dev.takami.app.ui.theme.Aurora
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +38,16 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun SettingsScreen(prefs: AppSettingsStore = AppSettingsStore(LocalContext.current)) {
+    var probing by remember { mutableStateOf(false) }
+    if (probing) {
+        AutoParseScreen(onClose = { probing = false })
+        return
+    }
+    SettingsBody(prefs = prefs, onProbe = { probing = true })
+}
+
+@Composable
+private fun SettingsBody(prefs: AppSettingsStore, onProbe: () -> Unit) {
     val context = LocalContext.current
     var stats by remember { mutableStateOf(ParserStats.EMPTY) }
     var proxyEnabled by remember { mutableStateOf(prefs.proxyEnabled) }
@@ -95,6 +106,18 @@ fun SettingsScreen(prefs: AppSettingsStore = AppSettingsStore(LocalContext.curre
                 value = "папки и CBZ",
             )
             Hint("Онлайн-источники появятся здесь после подключения парсера.")
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Разобрать сайт по ссылке",
+                color = Aurora.Acc2,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(Aurora.RadiusFull))
+                    .clickable(onClick = onProbe)
+                    .padding(vertical = 4.dp),
+            )
+            Hint("Даёт автопарсеру адрес страницы и показывает, что он с неё снял.")
         }
 
         Section("Хранилище") {
