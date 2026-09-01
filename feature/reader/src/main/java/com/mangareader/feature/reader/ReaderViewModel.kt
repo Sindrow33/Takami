@@ -37,6 +37,19 @@ import java.util.concurrent.ConcurrentHashMap
  * хранится и прокидывается в UI, оркестратор включается вместе с DI-графом
  * (INTEGRATION.md §7).
  */
+/**
+ * Куда можно уйти из текущей главы.
+ *
+ * Держится отдельным типом, а не парой полей, потому что «предыдущей
+ * главы нет» и «мы ещё не спросили источник» — разные состояния, и
+ * кнопка, нарисованная активной до ответа, ведёт в никуда.
+ */
+data class ChapterNav(
+    val prevId: String? = null,
+    val nextId: String? = null,
+    val resolved: Boolean = false,
+)
+
 data class ReaderUiState(
     val items: List<FeedItem> = emptyList(),
     val currentChapterId: String? = null,
@@ -51,6 +64,10 @@ data class ReaderUiState(
     val error: String? = null,
     /** Запрошенный слайдером переход на элемент ленты; одноразовый. */
     val pendingScrollIndex: Int? = null,
+    /** Открыта ли панель со списком глав. */
+    val chapterListVisible: Boolean = false,
+    /** Соседние главы для панели: id и номер, в порядке чтения. */
+    val chapterNav: ChapterNav = ChapterNav(),
 ) {
     /**
      * Индексы элементов текущей главы в ленте — область, по которой
@@ -120,6 +137,13 @@ class ReaderViewModel(
             feed.state.collect { feedState ->
                 val current = feedState.currentChapterId
                 val pagesInChapter = feedState.items.count { it is FeedItem.Page && it.chapterId == current }
+                if (current != null && current != _state.value.currentChapterId) {
+                    // Глава сменилась — соседи у неё другие; пока новый
+                    // ответ не пришёл, панель не должна показывать
+                    // кнопки от предыдущей главы.
+                    _state.value = _state.value.copy(chapterNav = ChapterNav())
+                    refreshChapterNav(current)
+                }
                 _state.value = _state.value.copy(
                     items = feedState.items,
                     currentChapterId = current,
@@ -241,6 +265,53 @@ class ReaderViewModel(
             _state.value = _state.value.copy(pendingScrollIndex = null)
         }
     }
+
+    fun openChapterList() {
+        _state.value = _state.value.copy(chapterListVisible = true, chromeVisible = true)
+    }
+
+    fun closeChapterList() {
+        _state.value = _state.value.copy(chapterListVisible = false)
+    }
+
+    /**
+     * Переход на соседнюю главу целиком, а не пролистыванием.
+     *
+     * Нужен отдельно от бесшовной ленты: дочитав главу до конца,
+     * пользователь уезжает в следующую сам, но добраться до предыдущей
+     * или перепрыгнуть вперёд из середины прокруткой невозможно.
+     */
+    fun goToChapter(chapterId: String) {
+        _state.value = _state.value.copy(
+            chapterListVisible = false,
+            loading = true,
+            error = null,
+        )
+        open(chapterId, startPage = 0)
+    }
+
+    /**
+     * Спрашивает источник о соседях текущей главы.
+     *
+     * Асинхронно и один раз на главу: у сетевого источника это запрос,
+     * и дёргать его на каждый кадр перерисовки хрома нельзя.
+     */
+    private fun refreshChapterNav(chapterId: String) {
+        if (navRequestedFor == chapterId) return
+        navRequestedFor = chapterId
+        viewModelScope.launch {
+            val prev = runCatching { source.prevChapter(chapterId) }.getOrNull()
+            val next = runCatching { source.nextChapter(chapterId) }.getOrNull()
+            // Глава могла смениться, пока шёл запрос: применять
+            // устаревший ответ значит показать кнопки от чужой главы.
+            if (_state.value.currentChapterId != chapterId) return@launch
+            _state.value = _state.value.copy(
+                chapterNav = ChapterNav(prevId = prev, nextId = next, resolved = true),
+            )
+        }
+    }
+
+    private var navRequestedFor: String? = null
 
     fun setTranslationMode(mode: TranslationMode) {
         _state.value = _state.value.copy(translationMode = mode)
