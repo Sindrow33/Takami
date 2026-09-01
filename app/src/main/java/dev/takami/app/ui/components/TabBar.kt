@@ -10,7 +10,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,6 +31,9 @@ import androidx.compose.ui.unit.sp
 import dev.takami.app.ui.theme.Aurora
 
 enum class Tab { Home, Library, Swipes, Calendar, Settings }
+
+/** Потолок отступа под системную навигацию: жестовый индикатор. */
+private val MAX_NAV_INSET = 12.dp
 
 /**
  * Нижний таббар: 5 позиций, центральная — FAB 56dp со смещением -26dp.
@@ -51,11 +56,25 @@ fun TabBar(
      * просвечивал контент экрана — на устройстве это выглядело так,
      * будто панель уехала вверх.
      */
+    /*
+     * Отступ под системную навигацию берётся, но ОГРАНИЧИВАЕТСЯ.
+     *
+     * При жестовой навигации система просит 48dp — это высота полосы
+     * для трёхкнопочного режима, хотя рисуется там одна тонкая черта.
+     * Прибавленный целиком, он поднимал строку иконок почти на высоту
+     * самой строки: панель формально стояла внизу, а выглядела
+     * висящей. Берём столько, сколько реально занимает индикатор, и не
+     * больше.
+     */
+    val systemInset = WindowInsets.navigationBars.asPaddingValues()
+        .calculateBottomPadding()
+    val bottomInset = minOf(systemInset, MAX_NAV_INSET)
+
     Box(
         Modifier
             .fillMaxWidth()
             .background(Aurora.SurfaceContainer)
-            .navigationBarsPadding(),
+            .padding(bottom = bottomInset),
     ) {
         Row(
             Modifier

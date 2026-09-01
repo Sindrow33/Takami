@@ -34,7 +34,6 @@ import java.util.Calendar
 fun HomeScreen(
     parserStats: ParserStats = ParserStats.EMPTY,
     onOpenTitle: (Int) -> Unit = {},
-    onParseSite: () -> Unit = {},
 ) {
     Column(
         Modifier
@@ -47,7 +46,7 @@ fun HomeScreen(
         Spacer(Modifier.height(16.dp))
         HeroContinue(MockDb.hero, onOpenTitle)
         Spacer(Modifier.height(20.dp))
-        QuickActions(onParseSite = onParseSite)
+        QuickActions()
         Spacer(Modifier.height(24.dp))
         NewsRail()
         Rail("Продолжить", MockDb.continueReading, onOpenTitle)
@@ -164,18 +163,18 @@ private fun HeroContinue(item: TitleItem, onOpen: (Int) -> Unit) {
 }
 
 @Composable
-private fun QuickActions(onParseSite: () -> Unit = {}) {
+private fun QuickActions() {
     /*
-     * Четвёртая карточка — «Добавить сайт». Кнопка разбора жила только в
-     * глубине настроек, и её там не нашли: действие, которым источники
-     * вообще появляются в приложении, обязано быть на главной.
+     * Разбора сайта здесь больше нет. Отдельная карточка «Добавить
+     * сайт» вела на пустой экран, который никто не связывал с
+     * автопарсером; теперь поле адреса и кнопка живут прямо в сводке
+     * движка — там, где пользователь на него и смотрит.
      */
     data class Action(val icon: TakamiIcon, val label: String, val sub: String, val onClick: () -> Unit)
     val actions = listOf(
         Action(TakamiIcon.Bell, "Обновления", "3") {},
         Action(TakamiIcon.Calendar, "Календарь", "сегодня") {},
         Action(TakamiIcon.Search, "Поиск", "по кадру") {},
-        Action(TakamiIcon.Brain, "Добавить сайт", "автопарсер", onParseSite),
     )
     // В макете это карточки-коробки с обводкой, а не голые глифы:
     // так они читаются как кнопки и попасть по ним проще.

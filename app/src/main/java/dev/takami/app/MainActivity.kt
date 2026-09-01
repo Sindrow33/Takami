@@ -131,7 +131,7 @@ private fun MainShell(parser: ParserState) {
             label = "screen",
         ) { current ->
             when (current) {
-                Tab.Home -> HomeScreen(parserStats, onParseSite = { parsing = true })
+                Tab.Home -> HomeScreen(parserStats)
                 Tab.Library -> LibraryTabs(onImmersive = { immersive = it })
                 Tab.Swipes -> SwipesScreen()
                 Tab.Calendar -> CalendarScreen()
