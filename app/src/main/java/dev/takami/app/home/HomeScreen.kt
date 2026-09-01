@@ -31,7 +31,11 @@ import dev.takami.app.ui.theme.Aurora
 import java.util.Calendar
 
 @Composable
-fun HomeScreen(parserStats: ParserStats = ParserStats.EMPTY, onOpenTitle: (Int) -> Unit = {}) {
+fun HomeScreen(
+    parserStats: ParserStats = ParserStats.EMPTY,
+    onOpenTitle: (Int) -> Unit = {},
+    onParseSite: () -> Unit = {},
+) {
     Column(
         Modifier
             .fillMaxSize()
@@ -43,7 +47,7 @@ fun HomeScreen(parserStats: ParserStats = ParserStats.EMPTY, onOpenTitle: (Int) 
         Spacer(Modifier.height(16.dp))
         HeroContinue(MockDb.hero, onOpenTitle)
         Spacer(Modifier.height(20.dp))
-        QuickActions()
+        QuickActions(onParseSite = onParseSite)
         Spacer(Modifier.height(24.dp))
         NewsRail()
         Rail("Продолжить", MockDb.continueReading, onOpenTitle)
@@ -160,12 +164,18 @@ private fun HeroContinue(item: TitleItem, onOpen: (Int) -> Unit) {
 }
 
 @Composable
-private fun QuickActions(onGo: (Tab) -> Unit = {}) {
+private fun QuickActions(onParseSite: () -> Unit = {}) {
+    /*
+     * Четвёртая карточка — «Добавить сайт». Кнопка разбора жила только в
+     * глубине настроек, и её там не нашли: действие, которым источники
+     * вообще появляются в приложении, обязано быть на главной.
+     */
+    data class Action(val icon: TakamiIcon, val label: String, val sub: String, val onClick: () -> Unit)
     val actions = listOf(
-        Triple(TakamiIcon.Bell, "Обновления", "3"),
-        Triple(TakamiIcon.Calendar, "Календарь", "сегодня"),
-        Triple(TakamiIcon.Search, "Поиск", "по кадру"),
-        Triple(TakamiIcon.Swipes, "Свайпы", "подбор"),
+        Action(TakamiIcon.Bell, "Обновления", "3") {},
+        Action(TakamiIcon.Calendar, "Календарь", "сегодня") {},
+        Action(TakamiIcon.Search, "Поиск", "по кадру") {},
+        Action(TakamiIcon.Brain, "Добавить сайт", "автопарсер", onParseSite),
     )
     // В макете это карточки-коробки с обводкой, а не голые глифы:
     // так они читаются как кнопки и попасть по ним проще.
@@ -173,14 +183,15 @@ private fun QuickActions(onGo: (Tab) -> Unit = {}) {
         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        actions.forEach { (icon, label, sub) ->
+        actions.forEach { action ->
+            val (icon, label, sub) = Triple(action.icon, action.label, action.sub)
             Column(
                 Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(Aurora.RadiusM))
                     .background(Aurora.SurfaceContainer)
                     .border(1.dp, Aurora.Brd, RoundedCornerShape(Aurora.RadiusM))
-                    .clickable { }
+                    .clickable(onClick = action.onClick)
                     .padding(vertical = 12.dp, horizontal = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
