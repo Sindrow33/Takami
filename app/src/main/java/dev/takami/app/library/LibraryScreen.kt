@@ -1,6 +1,9 @@
 package dev.takami.app.library
 
 import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -8,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,38 +40,93 @@ import kotlinx.coroutines.withContext
 @Composable
 fun LibraryScreen() {
     val context = LocalContext.current
+    val root = remember { LibraryRoot(context) }
     var titles by remember { mutableStateOf<List<LocalLibrary.Title>>(emptyList()) }
     var openedTitle by remember { mutableStateOf<LocalLibrary.Title?>(null) }
     var scanned by remember { mutableStateOf(false) }
+    var rescan by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
-        titles = withContext(Dispatchers.IO) { LocalLibrary.titles(context) }
+    /*
+     * Выбор папки через системный диалог. Пока его не было, корнем
+     * оставался внутренний каталог приложения — путь, в который
+     * пользователь с телефона положить ничего не может, поэтому
+     * библиотека была пуста при любом содержимом устройства.
+     */
+    val picker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            root.select(uri)
+            scanned = false
+            rescan++
+        }
+    }
+
+    LaunchedEffect(rescan) {
+        titles = withContext(Dispatchers.IO) { LocalLibrary.allTitles(context) }
         scanned = true
     }
 
     val title = openedTitle
     when {
         title != null -> ChapterList(title, onBack = { openedTitle = null })
-        titles.isEmpty() && scanned -> EmptyLibrary(LocalLibrary.rootDir(context).absolutePath)
-        else -> TitleList(titles) { openedTitle = it }
+        titles.isEmpty() && scanned -> EmptyLibrary(
+            path = root.displayPath(),
+            folderChosen = root.selectedTree() != null,
+            selectionLost = root.hasStaleSelection(),
+            onPick = { picker.launch(null) },
+        )
+        else -> TitleList(
+            titles = titles,
+            path = root.displayPath(),
+            onPick = { picker.launch(null) },
+            onOpen = { openedTitle = it },
+        )
     }
 }
 
 @Composable
-private fun TitleList(titles: List<LocalLibrary.Title>, onOpen: (LocalLibrary.Title) -> Unit) {
+private fun TitleList(
+    titles: List<LocalLibrary.Title>,
+    path: String,
+    onPick: () -> Unit,
+    onOpen: (LocalLibrary.Title) -> Unit,
+) {
     LazyColumn(
         Modifier.fillMaxSize().background(Aurora.Surface),
         contentPadding = PaddingValues(20.dp, 20.dp, 20.dp, 96.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            Text(
-                "Библиотека",
-                color = Aurora.OnSurface,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 6.dp),
-            )
+            Column(Modifier.padding(bottom = 6.dp)) {
+                Text(
+                    "Библиотека",
+                    color = Aurora.OnSurface,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                // Откуда читаем — видно всегда, и сменить можно отсюда
+                // же: иначе поменять папку получится, только опустошив
+                // библиотеку.
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        path,
+                        color = Aurora.OnSurfaceVariant,
+                        fontSize = 11.sp,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Text(
+                        "сменить",
+                        color = Aurora.Acc2,
+                        fontSize = 12.sp,
+                        modifier = Modifier.clickable(onClick = onPick).padding(start = 12.dp, top = 2.dp, bottom = 2.dp),
+                    )
+                }
+            }
         }
         items(titles) { title ->
             Row(
@@ -168,7 +227,12 @@ private fun ChapterProgressLabel(progress: ReadingProgressStore, chapterId: Stri
 }
 
 @Composable
-private fun EmptyLibrary(path: String) {
+private fun EmptyLibrary(
+    path: String,
+    folderChosen: Boolean,
+    selectionLost: Boolean,
+    onPick: () -> Unit,
+) {
     Column(
         Modifier.fillMaxSize().background(Aurora.Surface).padding(24.dp),
         verticalArrangement = Arrangement.Center,
@@ -179,12 +243,34 @@ private fun EmptyLibrary(path: String) {
         Text("Библиотека пуста", color = Aurora.OnSurface, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Читалка работает с локальными главами: папка со страницами или CBZ. " +
-                "Положите главы в $path — онлайн-источники подключатся сюда же, когда приедет парсер.",
+            when {
+                selectionLost ->
+                    "Выбранная папка больше недоступна — её удалили, извлекли карту или отозвали доступ. " +
+                        "Выберите папку заново."
+                folderChosen ->
+                    "В папке «$path» глав не нашлось. Ожидаемая раскладка: " +
+                        "Название/Глава/0001.jpg или Название/Глава.cbz."
+                else ->
+                    "Читалка работает с локальными главами: папка со страницами или CBZ. " +
+                        "Сейчас используется внутренняя папка приложения ($path) — положить туда файлы с телефона нельзя, " +
+                        "поэтому выберите свою папку."
+            },
             color = Aurora.OnSurfaceVariant,
             fontSize = 13.sp,
             lineHeight = 20.sp,
             textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(20.dp))
+        Text(
+            if (folderChosen) "Выбрать другую папку" else "Выбрать папку с мангой",
+            color = Color.Black,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(Aurora.RadiusS))
+                .background(Aurora.Acc2)
+                .clickable(onClick = onPick)
+                .padding(horizontal = 22.dp, vertical = 14.dp),
         )
     }
 }
@@ -194,7 +280,7 @@ private fun openReader(context: Context, title: LocalLibrary.Title, chapter: Loc
     if (!ReaderSourceRegistry.isRegistered(sourceId)) {
         ReaderSourceRegistry.register(
             sourceId = sourceId,
-            source = LocalLibrary.sourceFor(context, title),
+            source = LocalLibrary.anySourceFor(context, title),
             chapterLookup = LocalLibrary.chapterLookup(title),
         )
     }

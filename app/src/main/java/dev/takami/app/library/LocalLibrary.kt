@@ -27,6 +27,13 @@ object LocalLibrary {
         val name: String,
         val dir: File,
         val chapters: List<Chapter>,
+        /**
+         * Папка тайтла, если библиотека читается из выбранной
+         * пользователем директории. Для внутреннего каталога null —
+         * тогда работает [dir]. Различие не косметическое: у документа
+         * из системного диалога пути для `File` может не быть вовсе.
+         */
+        val treeUri: android.net.Uri? = null,
     ) {
         val chapterCount: Int get() = chapters.size
     }
@@ -38,7 +45,20 @@ object LocalLibrary {
         val isArchive: Boolean,
     )
 
-    fun rootDir(context: Context): File = File(context.filesDir, "manga").apply { mkdirs() }
+    fun rootDir(context: Context): File = LibraryRoot(context).internalDir()
+
+    /**
+     * Тайтлы из того места, которое сейчас выбрано: папка пользователя,
+     * иначе внутренний каталог.
+     */
+    fun allTitles(context: Context): List<Title> {
+        val tree = LibraryRoot(context).selectedTree()
+        return if (tree != null) TreeLibrary.titles(context, tree) else titles(context)
+    }
+
+    /** Источник для тайтла из любой библиотеки. */
+    fun anySourceFor(context: Context, title: Title): MangaPageSource =
+        if (title.treeUri != null) TreeLibrary.sourceFor(context, title) else sourceFor(context, title)
 
     fun titles(context: Context): List<Title> {
         val root = rootDir(context)

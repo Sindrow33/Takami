@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +45,16 @@ fun SettingsScreen(prefs: AppSettingsStore = AppSettingsStore(LocalContext.curre
     var cacheBytes by remember { mutableStateOf(0L) }
     var cacheRefresh by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
+    val libraryRoot = remember { dev.takami.app.library.LibraryRoot(context) }
+    var libraryPath by remember { mutableStateOf(libraryRoot.displayPath()) }
+    val folderPicker = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            libraryRoot.select(uri)
+            libraryPath = libraryRoot.displayPath()
+        }
+    }
 
     LaunchedEffect(Unit) {
         stats = withContext(Dispatchers.IO) { ParserState(context).stats() }
@@ -87,6 +98,28 @@ fun SettingsScreen(prefs: AppSettingsStore = AppSettingsStore(LocalContext.curre
         }
 
         Section("Хранилище") {
+            /*
+             * Папка контента — первым пунктом. По умолчанию корнем
+             * остаётся внутренний каталог приложения, куда пользователь
+             * с телефона положить ничего не может, поэтому смена папки
+             * должна быть на виду, а не только на пустом экране
+             * библиотеки.
+             */
+            InfoRow(title = "Папка с контентом", value = libraryPath)
+            Text(
+                "Выбрать папку",
+                color = Aurora.Acc2,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(Aurora.RadiusFull))
+                    .clickable { folderPicker.launch(null) }
+                    .padding(vertical = 4.dp),
+            )
+            Hint(
+                "Главы читаются отсюда: Название/Глава/0001.jpg или Название/Глава.cbz. " +
+                    "Сюда же будут сохраняться скачанные главы.",
+            )
             InfoRow(title = "Кеш страниц", value = formatSize(cacheBytes))
             Hint(
                 "Скачанные страницы хранятся, чтобы перечитывание не тратило трафик. " +
