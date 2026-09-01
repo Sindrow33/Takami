@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -109,6 +110,18 @@ fun ReaderRoot(
                     lineHeight = 20.sp,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 8.dp),
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Повторить",
+                    color = Aurora.OnPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(Aurora.RadiusFull))
+                        .background(Aurora.Acc)
+                        .clickable(onClick = viewModel::retry)
+                        .padding(horizontal = 22.dp, vertical = 10.dp),
                 )
             }
         }

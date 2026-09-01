@@ -113,8 +113,18 @@ class ReaderViewModel(
         }
     }
 
+    /** Последняя открытая глава — нужна кнопке «Повторить». */
+    private var currentRequest: Pair<String, Int>? = null
+
+    fun retry() {
+        val (chapterId, startPage) = currentRequest ?: return
+        _state.value = _state.value.copy(error = null, loading = true)
+        open(chapterId, startPage)
+    }
+
     fun open(chapterId: String, startPage: Int) {
         startPageRequested = startPage
+        currentRequest = chapterId to startPage
         viewModelScope.launch {
             runCatching { feed.start(chapterId, startPage) }
                 .onFailure { t ->
