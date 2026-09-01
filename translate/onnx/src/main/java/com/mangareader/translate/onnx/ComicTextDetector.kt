@@ -50,10 +50,13 @@ class ComicTextDetector(
         tensor.close()
 
         try {
-            val blocksTensor = results[0].value as Array<FloatArray> // N x 8
-            val scoresTensor = results.getOrNull(1)?.value as? FloatArray ?: FloatArray(blocksTensor.size) { 1f }
-            val verticalTensor = results.getOrNull(2)?.value as? FloatArray
-            val sfxTensor = results.getOrNull(3)?.value as? FloatArray
+            // Result — это Iterable<Map.Entry<String, OnnxValue>>; позиционного
+            // доступа у него нет, поэтому разворачиваем в список значений.
+            val outputs = results.map { it.value.value }
+            val blocksTensor = outputs[0] as Array<FloatArray> // N x 8
+            val scoresTensor = outputs.getOrNull(1) as? FloatArray ?: FloatArray(blocksTensor.size) { 1f }
+            val verticalTensor = outputs.getOrNull(2) as? FloatArray
+            val sfxTensor = outputs.getOrNull(3) as? FloatArray
 
             blocksTensor.indices.mapNotNull { i ->
                 val score = scoresTensor.getOrElse(i) { 1f }

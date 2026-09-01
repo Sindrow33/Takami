@@ -50,7 +50,7 @@ class OnnxSessionFactory(private val context: Context) {
     private fun tryCreateWithNnapi(modelFile: File, sanityCheck: ((OrtSession) -> Boolean)?): OrtSession? {
         return try {
             val options = OrtSession.SessionOptions().apply {
-                addNnapi()
+                addNnapiEp()
                 addXnnpack(this) // keep XNNPACK too so unsupported ops still run
             }
             val session = env.createSession(modelFile.absolutePath, options)
@@ -79,8 +79,8 @@ class OnnxSessionFactory(private val context: Context) {
         }
     }
 
-    private fun OrtSession.SessionOptions.addNnapi() {
-        addNnapi(emptySet())
+    private fun OrtSession.SessionOptions.addNnapiEp() {
+        addNnapi(java.util.EnumSet.noneOf(ai.onnxruntime.providers.NNAPIFlags::class.java))
     }
 
     /** Copies the model out of assets to app-internal storage so OrtEnvironment can mmap it by path. */
