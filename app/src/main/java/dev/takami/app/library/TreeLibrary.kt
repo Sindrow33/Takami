@@ -50,8 +50,9 @@ object TreeLibrary {
             .filter { it.chapters.isNotEmpty() }
     }
 
-    private fun chapters(titleDir: DocumentFile): List<LocalLibrary.Chapter> =
-        titleDir.listFiles()
+    private fun chapters(titleDir: DocumentFile): List<LocalLibrary.Chapter> {
+        val entries = titleDir.listFiles()
+        val nested = entries
             .filter { it.isDirectory || LibraryNames.isArchive(it.name.orEmpty()) }
             .sortedBy { it.name.orEmpty() }
             .mapIndexed { index, entry ->
@@ -64,6 +65,33 @@ object TreeLibrary {
                     isArchive = !entry.isDirectory,
                 )
             }
+        if (nested.isNotEmpty()) return nested
+
+        /*
+         * Плоская раскладка: страницы лежат прямо в папке тайтла, без
+         * подпапки главы. Так выглядит почти всё, что скачано одним
+         * архивом и распаковано на месте, и так же — папка, которую
+         * пользователь просто перетащил с компьютера. Без этой ветки
+         * тайтл виден, а глав у него ноль, и читалку открыть не из
+         * чего.
+         */
+        val hasPages = entries.any { it.isFile && LibraryNames.isImage(it.name.orEmpty()) }
+        return if (hasPages) {
+            listOf(
+                LocalLibrary.Chapter(
+                    id = FLAT_CHAPTER_ID,
+                    name = titleDir.name.orEmpty().ifEmpty { "Глава" },
+                    number = 1f,
+                    isArchive = false,
+                ),
+            )
+        } else {
+            emptyList()
+        }
+    }
+
+    /** Идентификатор главы, страницы которой лежат в самой папке тайтла. */
+    const val FLAT_CHAPTER_ID = "."
 
     /**
      * Источник страниц поверх выбранной папки.
@@ -124,8 +152,24 @@ private class TreePageSource(
         if (chapterOrder.isEmpty()) {
             chapterOrder += title.listFiles().mapNotNull { it.name }.sorted()
         }
-        val chapter = title.listFiles().firstOrNull { it.name == chapterId } ?: return emptyList()
-        if (!chapter.isDirectory) return emptyList()
+
+        // Плоская раскладка: страницы лежат в самой папке тайтла.
+        val chapter = if (chapterId == TreeLibrary.FLAT_CHAPTER_ID) {
+            title
+        } else {
+            title.listFiles().firstOrNull { it.name == chapterId } ?: return emptyList()
+        }
+
+        /*
+         * Глава-архив. Раньше здесь стоял выход по пустому списку для
+         * всего, что не папка, — то есть CBZ-глава давала пустую
+         * читалку: тайтл в списке есть, глава есть, а страниц ноль.
+         * Локальная библиотека архивы читала всегда, и потерялись они
+         * ровно на переходе к выбранной папке.
+         */
+        if (!chapter.isDirectory) {
+            return archivePages(chapterId, chapter)
+        }
 
         val files = chapter.listFiles().filter { it.isFile && LibraryNames.isImage(it.name.orEmpty()) }
         val byName = files.associateBy { it.name.orEmpty() }
@@ -135,7 +179,60 @@ private class TreePageSource(
         }
     }
 
+    /**
+     * Страницы CBZ/ZIP, лежащего в выбранной папке.
+     *
+     * Архив распаковывается один раз целиком, а не по странице: у
+     * content-документа нет пути на диске, и открыть его как zip с
+     * произвольным доступом нельзя — только читать потоком с начала.
+     * Поэтому распаковка по одной странице означала бы перечитывание
+     * всего архива на каждую страницу.
+     */
+    private fun archivePages(chapterId: String, archive: DocumentFile): List<PageRef> {
+        val dir = File(cacheDir, "cbz/" + PageCacheKey.of(archive.uri.toString()))
+        val marker = File(dir, ".done")
+        if (!marker.isFile) {
+            dir.mkdirs()
+            runCatching {
+                context.contentResolver.openInputStream(archive.uri).use { input ->
+                    requireNotNull(input) { "архив недоступен: ${archive.uri}" }
+                    java.util.zip.ZipInputStream(input.buffered()).use { zip ->
+                        while (true) {
+                            val entry = zip.nextEntry ?: break
+                            val name = entry.name
+                            if (entry.isDirectory || !LibraryNames.isImage(name)) continue
+                            // Имя записи может содержать путь и «..» —
+                            // распаковка по нему как есть писала бы за
+                            // пределы каталога.
+                            val out = File(dir, name.replace('/', '_').replace("..", "_"))
+                            out.outputStream().buffered().use { zip.copyTo(it) }
+                        }
+                    }
+                }
+            }.onFailure { return emptyList() }
+            marker.writeBytes(ByteArray(0))
+        }
+
+        val names = dir.listFiles()?.filter { it.isFile && LibraryNames.isImage(it.name) }.orEmpty()
+            .associateBy { it.name }
+        return LibraryNames.pageOrder(names.keys.toList()).mapIndexedNotNull { index, name ->
+            val file = names[name] ?: return@mapIndexedNotNull null
+            PageRef(id = "$chapterId/$name", index = index, uri = file.toURI().toString())
+        }
+    }
+
     override fun open(page: PageRef): Flow<PageLoad> = flow {
+        // Страница уже распакованного архива — обычный файл на диске,
+        // копировать её второй раз незачем.
+        if (page.uri.startsWith("file:")) {
+            val file = File(java.net.URI(page.uri))
+            if (file.isFile && file.length() > 0) {
+                emit(PageLoad.Done(file))
+            } else {
+                emit(PageLoad.Error(IllegalStateException("страница не распакована: ${page.uri}")))
+            }
+            return@flow
+        }
         val target = File(cacheDir, PageCacheKey.of(page))
         if (target.isFile && target.length() > 0) {
             // Отметка времени обязательна: каталог вытесняется по LRU от
@@ -171,6 +268,7 @@ private class TreePageSource(
     override suspend fun prevChapter(chapterId: String): String? = neighbour(chapterId, -1)
 
     private fun neighbour(chapterId: String, step: Int): String? {
+        if (chapterId == TreeLibrary.FLAT_CHAPTER_ID) return null
         val index = chapterOrder.indexOf(chapterId)
         if (index < 0) return null
         return chapterOrder.getOrNull(index + step)

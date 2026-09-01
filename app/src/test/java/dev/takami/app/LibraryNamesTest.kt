@@ -69,4 +69,16 @@ class LibraryNamesTest {
         val raw = "content://com.example.cloud/documents/xyz"
         assertEquals("лучше показать как есть, чем пустую строку", raw, DocumentPaths.readable(raw))
     }
+
+    @Test
+    fun `страницы архива и папки сортируются одинаково`() {
+        // Внутри CBZ имена обычно с путём: "ch1/10.jpg". Разбор
+        // расширения обязан это переживать, иначе страницы архива
+        // отсеются как «не картинки» и глава откроется пустой.
+        assertTrue(LibraryNames.isImage("Chapter 1/010.jpg"))
+        assertEquals(
+            listOf("1.png", "2.png", "10.png"),
+            LibraryNames.pageOrder(listOf("10.png", "1.png", "2.png")),
+        )
+    }
 }
