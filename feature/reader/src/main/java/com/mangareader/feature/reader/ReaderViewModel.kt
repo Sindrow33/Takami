@@ -10,6 +10,7 @@ import com.mangareader.core.model.MangaPageSource
 import com.mangareader.core.model.PageLoad
 import com.mangareader.core.model.PageRef
 import com.mangareader.core.model.ReaderEvent
+import com.mangareader.reader.engine.cache.PagePrefetcher
 import com.mangareader.reader.engine.decode.PageDecoder
 import com.mangareader.reader.engine.feed.FeedController
 import com.mangareader.reader.engine.feed.FeedEvent
@@ -76,6 +77,18 @@ class ReaderViewModel(
         chapterLookup = chapterLookup,
         scope = viewModelScope,
     )
+
+    /**
+     * Упреждающая загрузка байтов страниц за пределами окна
+     * декодирования. Декодировать заранее нельзя — битмапы съедят
+     * память, а вот скачать можно и нужно: на сетевом источнике без
+     * этого каждая страница ждёт полный round-trip в момент, когда
+     * пользователь до неё домотал.
+     *
+     * Класс был написан, но не подключён ни к чему — до этой правки
+     * упреждающей загрузки не существовало.
+     */
+    private val prefetcher = PagePrefetcher(source = source, scope = viewModelScope)
 
     private val _state = MutableStateFlow(ReaderUiState())
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
@@ -253,10 +266,36 @@ class ReaderViewModel(
             if (!decodeRequested.add(page.pageRef.id)) continue
             viewModelScope.launch(Dispatchers.IO) { loadAndDecode(index, page.pageRef) }
         }
+
+        prefetchAround(centerIndex, items)
+    }
+
+    /**
+     * Качает вперёд дальше, чем декодирует: PREFETCH_RADIUS страниц по
+     * ходу чтения. Загрузки, ушедшие далеко за спину, отменяются — при
+     * быстрой перемотке они бы забивали канал и тормозили ту страницу,
+     * на которую пользователь смотрит прямо сейчас.
+     */
+    private fun prefetchAround(centerIndex: Int, items: List<FeedItem>) {
+        val range = (centerIndex - 1)..(centerIndex + PREFETCH_RADIUS)
+        val wanted = LinkedHashMap<String, PageRef>()
+        for (index in range) {
+            val page = items.getOrNull(index) as? FeedItem.Page ?: continue
+            if (loadedFiles.containsKey(page.pageRef.id)) continue
+            wanted[page.pageRef.id] = page.pageRef
+        }
+
+        prefetcher.trimTo(wanted.keys)
+        // Приоритет по удалённости от центра: ближайшая страница важнее.
+        wanted.values.forEachIndexed { offset, pageRef ->
+            prefetcher.request(pageRef, priority = offset)
+        }
     }
 
     private suspend fun loadAndDecode(globalIndex: Int, pageRef: PageRef) {
-        val cached = loadedFiles[pageRef.id]
+        // Упреждающая загрузка могла уже принести файл — тогда сетевой
+        // запрос не нужен вовсе.
+        val cached = loadedFiles[pageRef.id] ?: prefetcher.cachedFile(pageRef.id)
         val file = cached ?: runCatching { fetch(pageRef) }.getOrElse { t ->
             decodeRequested.remove(pageRef.id)
             feed.reportPageState(globalIndex, PageState.ERROR)
@@ -319,9 +358,15 @@ class ReaderViewModel(
     }
 
     override fun onCleared() {
+        prefetcher.cancelAll()
         bitmaps.values.forEach { if (!it.isRecycled) it.recycle() }
         bitmaps.clear()
         super.onCleared()
+    }
+
+    private companion object {
+        /** Насколько страниц вперёд качаем байты (декодируем меньше). */
+        const val PREFETCH_RADIUS = 8
     }
 
     class Factory(
