@@ -122,3 +122,54 @@ class ChapterPlanTest {
         assertTrue(ChapterPlan.toPageRefs("ch12", chapterUrl, emptyList()).isEmpty())
     }
 }
+
+/**
+ * Имя файла страницы. Логика та же, что в `WebMangaPageSource`, и
+ * причина у неё та же, что у ключа дискового кеша читалки: один URL с
+ * разным `Referer` — разное тело ответа.
+ */
+class PageFileNameTest {
+
+    private fun name(uri: String, headers: Map<String, String>): String {
+        val keyed = headers
+            .filterKeys { it.lowercase() in setOf("referer", "origin", "cookie") }
+            .map { (n, v) -> n.lowercase() + "=" + v }
+            .sorted()
+            .joinToString("&")
+        return java.security.MessageDigest.getInstance("SHA-1")
+            .digest((uri + "\n" + keyed).toByteArray())
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    @Test
+    fun `разный referer при одном url даёт разные файлы`() {
+        val a = name("https://cdn/a.jpg", mapOf("Referer" to "https://one.test/ch-1"))
+        val b = name("https://cdn/a.jpg", mapOf("Referer" to "https://two.test/ch-1"))
+
+        assertTrue("иначе заглушка с 403 осела бы вместо страницы", a != b)
+    }
+
+    @Test
+    fun `регистр и порядок заголовков не плодят разные файлы`() {
+        val a = name("https://cdn/a.jpg", linkedMapOf("Referer" to "https://x.test/", "Origin" to "https://x.test"))
+        val b = name("https://cdn/a.jpg", linkedMapOf("origin" to "https://x.test", "REFERER" to "https://x.test/"))
+
+        assertEquals(a, b)
+    }
+
+    @Test
+    fun `заголовки вне списка не влияют на имя`() {
+        // Иначе имя менялось бы от запроса к запросу и файл никогда
+        // не переиспользовался бы — кеш есть, попаданий нет.
+        val a = name("https://cdn/a.jpg", mapOf("Referer" to "https://x.test/", "User-Agent" to "UA-1"))
+        val b = name("https://cdn/a.jpg", mapOf("Referer" to "https://x.test/", "X-Request-Id" to "42"))
+
+        assertEquals(a, b)
+    }
+
+    @Test
+    fun `один url в двух главах это один файл`() {
+        val headers = mapOf("Referer" to "https://x.test/ch-1")
+        assertEquals(name("https://cdn/a.jpg", headers), name("https://cdn/a.jpg", headers))
+    }
+}

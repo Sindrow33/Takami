@@ -30,7 +30,11 @@ class WebMangaPageSource(
     private val engine: ParseEngine,
     private val fetcher: PageFetcher,
     private val bundledConfig: SourceConfig,
-    /** Каталог для скачанных страниц. Обычно подкаталог `cacheDir`. */
+    /**
+     * Каталог для скачанных страниц. Обычно подкаталог `cacheDir`, взятый
+     * дисковым кешем читалки под общий лимит через `adopt` — значит,
+     * файлы отсюда вытесняются по LRU и могут исчезнуть между вызовами.
+     */
     private val downloadDir: File,
     /** URL главы по её id. Задаёт хост — у него список глав, не у нас. */
     private val chapterUrlOf: suspend (String) -> String,
@@ -96,6 +100,14 @@ class WebMangaPageSource(
          * и записью, и читалка приняла бы его за готовую страницу.
          */
         if (target.isFile && target.length() > 0) {
+            /*
+             * Отметка времени обязательна: каталог вытесняется по LRU
+             * от `lastModified`, а переиспользование файла его не
+             * меняет. Без этого только что прочитанная страница выглядит
+             * для вытеснения самой давней и уходит первой — кеш
+             * выбрасывал бы ровно то, что читают прямо сейчас.
+             */
+            target.setLastModified(System.currentTimeMillis())
             send(PageLoad.Done(target))
             return@channelFlow
         }
@@ -132,11 +144,37 @@ class WebMangaPageSource(
     override suspend fun prevChapter(chapterId: String): String? =
         ChapterPlan.neighbour(chapterIdsOf(chapterId), chapterId, -1)
 
-    /** Имя файла — от URL, а не от id: одна страница = один файл. */
+    /**
+     * Имя файла — от URL и заголовков, влияющих на тело ответа.
+     *
+     * Не от id страницы: один URL, встреченный в двух главах, должен
+     * быть одним файлом. И не от одного URL: тот же адрес с другим
+     * `Referer` на хостингах картинок отдаёт либо страницу, либо
+     * заглушку с 403 — по одному URL они склеились бы в один файл, и
+     * заглушка осела бы вместо страницы.
+     */
     private fun fileNameFor(page: PageRef): String {
+        val keyed = page.headers
+            .filterKeys { it.lowercase() in KEYED_HEADERS }
+            // Регистр и порядок заголовков не должны плодить разные
+            // имена для одного и того же запроса.
+            .map { (name, value) -> name.lowercase() + "=" + value }
+            .sorted()
+            .joinToString("&")
+
         val digest = java.security.MessageDigest.getInstance("SHA-1")
-            .digest(page.uri.toByteArray())
+            .digest((page.uri + "\n" + keyed).toByteArray())
             .joinToString("") { "%02x".format(it) }
         return digest
+    }
+
+    private companion object {
+        /**
+         * Закрытый список: заголовки, которые реально меняют тело.
+         * Попади сюда `User-Agent` или какой-нибудь `X-Request-Id` —
+         * имя файла менялось бы от запроса к запросу, и переиспользования
+         * не было бы вообще.
+         */
+        val KEYED_HEADERS = setOf("referer", "origin", "cookie")
     }
 }
