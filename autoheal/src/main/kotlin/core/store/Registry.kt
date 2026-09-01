@@ -55,6 +55,13 @@ class SourceRegistry(root: File) {
     fun config(host: String, bundled: SourceConfig): SourceConfig =
         manager.effectiveConfig(host, configs.load(host) ?: bundled)
 
+    /**
+     * Записать конфиг на диск. Вызывается на `configToPersist` из
+     * разбора: без этого отремонтированные селекторы и снятые отпечатки
+     * живут только до конца процесса, и следующий запуск лечится с нуля.
+     */
+    fun persist(config: SourceConfig) = configs.save(config)
+
     fun proposeRepair(
         host: String,
         base: SourceConfig,
