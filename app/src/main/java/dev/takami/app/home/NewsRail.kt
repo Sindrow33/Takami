@@ -34,7 +34,9 @@ import dev.takami.app.ui.theme.Aurora
 fun NewsRail(
     items: List<NewsItem> = newsFeed,
     onOpen: (NewsItem) -> Unit = {},
-    onOpenAll: () -> Unit = {},
+    // null — ссылки «Все ›» не будет: экрана всех новостей пока нет, а
+    // кнопка, которая ничего не открывает, читается как поломка.
+    onOpenAll: (() -> Unit)? = null,
 ) {
     if (items.isEmpty()) return
     val state = rememberLazyListState()
@@ -71,7 +73,7 @@ fun NewsRail(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
         ) {
-            items.forEachIndexed { i, _ ->
+            items.take(MAX_DOTS).forEachIndexed { i, _ ->
                 val active = i == activeIndex
                 val width by animateDpAsState(if (active) 18.dp else 6.dp, label = "dot")
                 Box(
@@ -86,6 +88,9 @@ fun NewsRail(
         }
     }
 }
+
+/** Больше десятка точек читаются как рябь, а не как индикатор. */
+private const val MAX_DOTS = 10
 
 /** Заголовок секции с ссылкой «Все ›» — общий для новостей и рельс. */
 @Composable
@@ -187,8 +192,12 @@ private fun NewsCard(item: NewsItem, onOpen: (NewsItem) -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                Text(" · ", color = Aurora.OnSurfaceVariant.copy(alpha = .5f), fontSize = 10.5.sp)
-                Text(item.age, color = Aurora.OnSurfaceVariant.copy(alpha = .8f), fontSize = 10.5.sp)
+                // Возраст рисуется только когда он известен: точка с
+                // пустотой после неё выглядит как потерянный текст.
+                if (item.age.isNotEmpty()) {
+                    Text(" · ", color = Aurora.OnSurfaceVariant.copy(alpha = .5f), fontSize = 10.5.sp)
+                    Text(item.age, color = Aurora.OnSurfaceVariant.copy(alpha = .8f), fontSize = 10.5.sp)
+                }
             }
         }
     }
