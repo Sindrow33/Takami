@@ -81,4 +81,41 @@ class LibraryNamesTest {
             LibraryNames.pageOrder(listOf("10.png", "1.png", "2.png")),
         )
     }
+
+    @Test
+    fun `номер страницы берётся последним числом, а не номером главы`() {
+        // Путь внутри архива схлопывается в имя, и первое число в нём —
+        // номер главы, одинаковый у всех страниц: сортировка по нему
+        // оставила бы порядок случайным.
+        assertEquals(
+            listOf("Chapter 1_001.jpg", "Chapter 1_002.jpg", "Chapter 1_010.jpg"),
+            LibraryNames.pageOrder(
+                listOf("Chapter 1_010.jpg", "Chapter 1_002.jpg", "Chapter 1_001.jpg"),
+            ),
+        )
+        assertEquals(5f, LibraryNames.pageNumberOf("vol2_005.png")!!, 0.001f)
+    }
+
+    @Test
+    fun `служебные записи macOS не считаются страницами`() {
+        assertFalse(
+            "файлы-двойники дают вдвое больше страниц, половина из которых не декодируется",
+            LibraryNames.isPageEntry("__MACOSX/ch1/._0001.jpg"),
+        )
+        assertFalse(LibraryNames.isPageEntry("ch1/._0001.jpg"))
+        assertFalse(LibraryNames.isPageEntry("ch1/.hidden.jpg"))
+        assertTrue(LibraryNames.isPageEntry("ch1/0001.jpg"))
+        assertFalse(LibraryNames.isPageEntry("ComicInfo.xml"))
+    }
+
+    @Test
+    fun `имя записи архива не выходит за пределы каталога`() {
+        assertEquals("etc_passwd.jpg", LibraryNames.safeEntryName("../../etc/passwd.jpg"))
+        assertEquals("ch1_0001.jpg", LibraryNames.safeEntryName("ch1/0001.jpg"))
+        assertEquals(
+            "архивы из Windows несут обратные слэши",
+            "ch1_0001.jpg",
+            LibraryNames.safeEntryName("ch1\\0001.jpg"),
+        )
+    }
 }

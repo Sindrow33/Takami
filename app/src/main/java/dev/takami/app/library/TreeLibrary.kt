@@ -9,6 +9,7 @@ import com.mangareader.core.model.PageLoad
 import com.mangareader.core.model.PageRef
 import com.mangareader.feature.reader.ReaderSourceRegistry
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -124,6 +125,35 @@ object LibraryNames {
     fun isImage(name: String): Boolean =
         name.substringAfterLast('.', "").lowercase() in IMAGE_EXTENSIONS
 
+    /**
+     * Годится ли запись архива в страницы.
+     *
+     * Одного расширения мало: архивы, собранные на macOS, несут папку
+     * `__MACOSX` с файлами-двойниками вида `._0001.jpg`. Расширение у
+     * них картиночное, содержимое — служебные метаданные, и в читалке
+     * они дают ровно вдвое больше «страниц», половина из которых не
+     * декодируется. Точечные файлы отсеиваются по той же причине.
+     */
+    fun isPageEntry(name: String): Boolean {
+        if (!isImage(name)) return false
+        val leaf = name.substringAfterLast('/')
+        if (leaf.startsWith("._") || leaf.startsWith(".")) return false
+        return !name.split('/').any { it == "__MACOSX" }
+    }
+
+    /**
+     * Плоское имя файла для записи архива.
+     *
+     * Путь внутри архива схлопывается, а `..` вычищается: распаковка по
+     * имени как есть писала бы за пределы каталога. При этом имя должно
+     * остаться сортируемым — номер страницы в нём сохраняется.
+     */
+    fun safeEntryName(entryName: String): String =
+        entryName.replace('\\', '/')
+            .split('/')
+            .filter { it.isNotEmpty() && it != "." && it != ".." }
+            .joinToString("_")
+
     fun numberOf(name: String): Float? =
         Regex("""\d+(?:[.,]\d+)?""").find(name)?.value?.replace(',', '.')?.toFloatOrNull()
 
@@ -136,7 +166,21 @@ object LibraryNames {
      * это не редкий случай, а обычный.
      */
     fun pageOrder(names: List<String>): List<String> =
-        names.sortedWith(compareBy({ numberOf(it) ?: Float.MAX_VALUE }, { it.lowercase() }))
+        names.sortedWith(compareBy({ pageNumberOf(it) ?: Float.MAX_VALUE }, { it.lowercase() }))
+
+    /**
+     * Номер страницы в имени файла — ПОСЛЕДНЕЕ число, а не первое.
+     *
+     * У записи архива путь схлопнут в имя: `Chapter 1/010.jpg`
+     * становится `Chapter 1_010.jpg`. Первое число здесь — номер главы,
+     * одинаковый у всех страниц, и сортировка по нему оставила бы
+     * порядок случайным. То же у сканов вида `vol2_005.png`.
+     */
+    fun pageNumberOf(name: String): Float? {
+        val base = name.substringBeforeLast('.', name)
+        return Regex("""\d+(?:[.,]\d+)?""").findAll(base).lastOrNull()
+            ?.value?.replace(',', '.')?.toFloatOrNull()
+    }
 }
 
 private class TreePageSource(
@@ -188,38 +232,63 @@ private class TreePageSource(
      * Поэтому распаковка по одной странице означала бы перечитывание
      * всего архива на каждую страницу.
      */
-    private fun archivePages(chapterId: String, archive: DocumentFile): List<PageRef> {
-        val dir = File(cacheDir, "cbz/" + PageCacheKey.of(archive.uri.toString()))
-        val marker = File(dir, ".done")
-        if (!marker.isFile) {
-            dir.mkdirs()
-            runCatching {
-                context.contentResolver.openInputStream(archive.uri).use { input ->
-                    requireNotNull(input) { "архив недоступен: ${archive.uri}" }
-                    java.util.zip.ZipInputStream(input.buffered()).use { zip ->
-                        while (true) {
-                            val entry = zip.nextEntry ?: break
-                            val name = entry.name
-                            if (entry.isDirectory || !LibraryNames.isImage(name)) continue
-                            // Имя записи может содержать путь и «..» —
-                            // распаковка по нему как есть писала бы за
-                            // пределы каталога.
-                            val out = File(dir, name.replace('/', '_').replace("..", "_"))
-                            out.outputStream().buffered().use { zip.copyTo(it) }
+    private suspend fun archivePages(chapterId: String, archive: DocumentFile): List<PageRef> =
+        withContext(Dispatchers.IO) {
+            /*
+             * Распаковка обязана идти вне главного потока. `pages()`
+             * зовётся из корутины читалки, но без явного переключения
+             * она исполняется на том диспетчере, на котором её позвали:
+             * архив на сотню страниц блокировал экран, и глава
+             * выглядела как «не грузится».
+             */
+            val dir = File(cacheDir, "cbz/" + PageCacheKey.of(archive.uri.toString()))
+            val marker = File(dir, ".done")
+            if (!marker.isFile) {
+                /*
+                 * Незавершённая распаковка не должна выглядеть готовой:
+                 * маркер ставится только после успеха, а остатки
+                 * прошлой неудачи сносятся — иначе глава навсегда
+                 * осталась бы наполовину распакованной.
+                 */
+                dir.deleteRecursively()
+                dir.mkdirs()
+                val extracted = runCatching {
+                    context.contentResolver.openInputStream(archive.uri).use { input ->
+                        requireNotNull(input) { "архив недоступен: ${archive.uri}" }
+                        java.util.zip.ZipInputStream(input.buffered()).use { zip ->
+                            var count = 0
+                            while (true) {
+                                val entry = zip.nextEntry ?: break
+                                val name = entry.name
+                                if (entry.isDirectory || !LibraryNames.isPageEntry(name)) continue
+                                // Имя записи может содержать путь и «..» —
+                                // распаковка по нему как есть писала бы за
+                                // пределы каталога.
+                                val out = File(dir, LibraryNames.safeEntryName(name))
+                                out.outputStream().buffered().use { zip.copyTo(it) }
+                                count++
+                            }
+                            count
                         }
                     }
+                }.getOrElse { 0 }
+                if (extracted == 0) {
+                    dir.deleteRecursively()
+                    return@withContext emptyList()
                 }
-            }.onFailure { return emptyList() }
-            marker.writeBytes(ByteArray(0))
-        }
+                marker.writeBytes(ByteArray(0))
+                // Распакованное — это место на диске, за которое кеш
+                // отвечает; без этого каталог рос бы без предела.
+                runCatching { ReaderSourceRegistry.diskCache?.enforceLimit() }
+            }
 
-        val names = dir.listFiles()?.filter { it.isFile && LibraryNames.isImage(it.name) }.orEmpty()
-            .associateBy { it.name }
-        return LibraryNames.pageOrder(names.keys.toList()).mapIndexedNotNull { index, name ->
-            val file = names[name] ?: return@mapIndexedNotNull null
-            PageRef(id = "$chapterId/$name", index = index, uri = file.toURI().toString())
+            val names = dir.listFiles()?.filter { it.isFile && LibraryNames.isImage(it.name) }.orEmpty()
+                .associateBy { it.name }
+            LibraryNames.pageOrder(names.keys.toList()).mapIndexedNotNull { index, name ->
+                val file = names[name] ?: return@mapIndexedNotNull null
+                PageRef(id = "$chapterId/$name", index = index, uri = file.toURI().toString())
+            }
         }
-    }
 
     override fun open(page: PageRef): Flow<PageLoad> = flow {
         // Страница уже распакованного архива — обычный файл на диске,
