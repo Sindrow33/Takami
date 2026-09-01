@@ -353,6 +353,8 @@ class ReaderViewModel(
     private suspend fun cacheOnDisk(pageRef: PageRef, file: File) {
         val cache = diskCache ?: return
         if (!pageRef.uri.startsWith("http", ignoreCase = true)) return
+        // put вернёт null, если байты не похожи на изображение — тогда
+        // в кеш не попадёт ни битое тело, ни HTML с капчей под кодом 200.
         runCatching { cache.put(pageRef, file.readBytes()) }
     }
 

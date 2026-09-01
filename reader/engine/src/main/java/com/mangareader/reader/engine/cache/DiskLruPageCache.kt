@@ -35,6 +35,9 @@ class DiskLruPageCache(
          * `Cookie` — сессия, за которой может стоять другой контент.
          */
         private val KEYED_HEADERS = setOf("referer", "origin", "cookie")
+
+        /** Сколько байт читаем для проверки сигнатуры при чтении. */
+        private const val HEADER_PROBE_BYTES = 64
     }
 
     private val mutex = Mutex()
@@ -70,8 +73,21 @@ class DiskLruPageCache(
     /** Файл для страницы — заголовки берутся из самой [PageRef]. */
     fun fileFor(page: PageRef): File = fileFor(page.uri, page.headers)
 
-    suspend fun put(uri: String, bytes: ByteArray, headers: Map<String, String> = emptyMap()): File =
+    /**
+     * Кладёт байты страницы в кеш.
+     *
+     * @return файл, или null если байты не похожи на изображение.
+     *
+     * Проверка сигнатуры обязательна именно здесь: цена ошибки
+     * несимметрична. Битую загрузку чинит повтор, а битую запись в
+     * кеше — ничего, она будет отдаваться при каждом открытии главы,
+     * пока пользователь не очистит кеш руками. Мусор приезжает от
+     * тела, прошедшего через String, от HTML с капчей под кодом 200 и
+     * от оборванной загрузки.
+     */
+    suspend fun put(uri: String, bytes: ByteArray, headers: Map<String, String> = emptyMap()): File? =
         mutex.withLock {
+            if (!ImageBytes.looksLikeImage(bytes)) return@withLock null
             val file = fileFor(uri, headers)
             file.writeBytes(bytes)
             file.setLastModified(System.currentTimeMillis())
@@ -79,14 +95,24 @@ class DiskLruPageCache(
             file
         }
 
-    suspend fun put(page: PageRef, bytes: ByteArray): File = put(page.uri, bytes, page.headers)
+    suspend fun put(page: PageRef, bytes: ByteArray): File? = put(page.uri, bytes, page.headers)
 
     suspend fun get(uri: String, headers: Map<String, String> = emptyMap()): File? = mutex.withLock {
         val file = fileFor(uri, headers)
-        if (file.exists() && file.length() > 0) {
-            file.setLastModified(System.currentTimeMillis())
-            file
-        } else null
+        if (!file.exists() || file.length() < ImageBytes.MIN_SIZE_BYTES) return@withLock null
+
+        // Сигнатура перечитывается и на чтении: запись могла лечь до
+        // появления этой проверки или быть повреждена обрывом записи.
+        // Читаем только заголовок файла, не всё тело.
+        val header = ByteArray(HEADER_PROBE_BYTES)
+        val read = file.inputStream().use { it.read(header) }
+        if (read < ImageBytes.MIN_SIZE_BYTES || !ImageBytes.looksLikeImage(header)) {
+            file.delete()
+            return@withLock null
+        }
+
+        file.setLastModified(System.currentTimeMillis())
+        file
     }
 
     suspend fun get(page: PageRef): File? = get(page.uri, page.headers)
