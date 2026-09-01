@@ -23,6 +23,7 @@ import core.engine.ParserStats
 import dev.takami.app.data.TakamiPrefs
 import dev.takami.app.parser.ParserState
 import dev.takami.app.home.HomeScreen
+import dev.takami.app.library.LibraryScreen
 import dev.takami.app.onboarding.OnboardingFlow
 import dev.takami.app.ui.components.ModulePlaceholder
 import dev.takami.app.ui.components.Tab
@@ -93,10 +94,7 @@ private fun MainShell(parser: ParserState) {
         ) { current ->
             when (current) {
                 Tab.Home -> HomeScreen(parserStats)
-                Tab.Library -> ModulePlaceholder(
-                    "Библиотека", "manga-reader",
-                    "Каталог и читалка приезжают из модульной ветки. Здесь останется вход в библиотеку и общий прогресс.",
-                )
+                Tab.Library -> LibraryScreen()
                 Tab.Swipes -> ModulePlaceholder(
                     "Свайпы", "anime-scene-search",
                     "Подбор тайтлов свайпами и поиск по кадру — модуль поиска.",
