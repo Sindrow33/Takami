@@ -50,9 +50,21 @@ class ParseEngine(
         truncated: Boolean = false,
         browserHeaders: Boolean = false,
     ): Result {
-        val config = registry.config(host, bundled)
+        val stored = registry.config(host, bundled)
         val health = registry.health(host)
         val dom = parser.parse(html, url)
+
+        /*
+         * Холодный старт. Хилер умеет чинить уехавший селектор, но не
+         * умеет придумать первый: он ищет узел по отпечатку или по
+         * эталонному значению, а и то и другое появляется только после
+         * удачного разбора. У сайта, который видят впервые, спек нет
+         * вовсе — экстрактор возвращал пустой список, ни разу не
+         * заглянув в документ, и это показывалось пользователю как
+         * «страница собирается скриптами».
+         */
+        val config = if (kind == RequestKind.CONTENT) stored
+        else core.heal.ColdStart.infer(dom, stored) ?: stored
 
         val extracted = extractor.extract(kind, dom, config, url)
         val report = StandardContractChecker(config.profile)
@@ -66,7 +78,10 @@ class ParseEngine(
                 payload = extracted.payload,
                 report = report,
                 outcome = outcome,
-                configToPersist = refreshed.takeIf { it != config },
+                // Сочинённый на холодную конфиг тоже подлежит записи:
+                // сравнение с тем, что лежало в реестре, а не с тем,
+                // чем разбирали.
+                configToPersist = refreshed.takeIf { it != stored },
             )
         }
 

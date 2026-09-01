@@ -207,7 +207,17 @@ private fun AiSheet(stats: ParserStats, onClose: () -> Unit) {
                 Spacer(Modifier.height(10.dp))
             }
 
-            Spacer(Modifier.height(6.dp))
+            /*
+             * Разбор сайта живёт здесь, а не отдельной кнопкой на
+             * главной: это действие над движком, сводку которого
+             * пользователь сейчас и смотрит. Отдельная карточка в
+             * быстрых действиях уводила на пустой экран, который никто
+             * не связывал с автопарсером.
+             */
+            Spacer(Modifier.height(4.dp))
+            dev.takami.app.parser.AutoParseInline()
+
+            Spacer(Modifier.height(16.dp))
             Column(
                 Modifier
                     .fillMaxWidth()

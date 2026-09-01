@@ -144,6 +144,21 @@ class ReaderViewModel(
                     _state.value = _state.value.copy(chapterNav = ChapterNav())
                     refreshChapterNav(current)
                 }
+                /*
+                 * Первое декодирование главы.
+                 *
+                 * Раньше его запускал только onViewportSettled, а его
+                 * зовёт вьюха — на скролле и на явном переходе. При
+                 * открытии главы с первой страницы не происходит ни
+                 * того, ни другого: pendingScrollIndex ставится только
+                 * при startPage > 0. То есть на холодном открытии
+                 * читалка не декодировала НИ ОДНОЙ страницы и
+                 * показывала чёрный экран с правильным счётчиком
+                 * страниц — картинку было видно только после того,
+                 * как пользователь ткнёт в ленту.
+                 */
+                val firstItems = _state.value.items.isEmpty() && feedState.items.isNotEmpty()
+
                 _state.value = _state.value.copy(
                     items = feedState.items,
                     currentChapterId = current,
@@ -153,6 +168,10 @@ class ReaderViewModel(
                     totalPagesInChapter = pagesInChapter,
                     loading = feedState.items.isEmpty(),
                 )
+
+                if (firstItems) {
+                    ensureWindowDecoded(indexOfPage(current.orEmpty(), startPageRequested))
+                }
             }
         }
         viewModelScope.launch {
