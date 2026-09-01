@@ -58,7 +58,7 @@ fun ReaderRoot(
                 override fun bitmapFor(item: com.mangareader.reader.engine.layout.FeedItem.Page) =
                     viewModel.bitmapFor(item)
             },
-            onLayoutWidth = { viewModel.layoutWidthPx = it },
+            onLayoutWidth = viewModel::onLayoutWidth,
             onTap = viewModel::toggleChrome,
         )
 

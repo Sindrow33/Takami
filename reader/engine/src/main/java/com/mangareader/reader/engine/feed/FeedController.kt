@@ -95,12 +95,44 @@ class FeedController(
         maybeEmitChapterChanged(centerGlobalIndex)
     }
 
+    /**
+     * Измеренные высоты страниц, ключ — [PageRef.id]. Живут дольше, чем
+     * сам элемент ленты: [rebuildFlatItems] пересоздаёт список при
+     * догрузке главы, и без этой карты все уже измеренные страницы
+     * откатились бы к оценке — то есть лента прыгала бы ровно на
+     * границе глав, где пользователь как раз и читает.
+     */
+    private val measuredHeights = HashMap<String, Int>()
+
     /** Called once a page's true decoded height is known, to replace an estimate. */
     fun reportMeasuredHeight(globalIndex: Int, actualHeightPx: Int) {
+        if (actualHeightPx <= 0) return
         val items = _state.value.items.toMutableList()
         val current = items.getOrNull(globalIndex) as? FeedItem.Page ?: return
+        if (!current.isHeightEstimated && current.layoutHeightPx == actualHeightPx) return
+
+        measuredHeights[current.pageRef.id] = actualHeightPx
+        // Средняя высота обновляется только по реально измеренным
+        // страницам — это и есть тот путь, по которому идут источники без
+        // width/height в PageRef (то есть почти все онлайн-источники).
+        heightEstimator.recordMeasured(actualHeightPx)
+
         items[globalIndex] = current.copy(layoutHeightPx = actualHeightPx, isHeightEstimated = false)
         _state.update { it.copy(items = items) }
+    }
+
+    /**
+     * Ширина ленты в px. До первого layout оценка считается по значению
+     * по умолчанию, поэтому UI обязан сообщить реальную ширину — иначе
+     * все оценки систематически промахиваются на отношение ширин.
+     */
+    fun updateLayoutWidth(widthPx: Int) {
+        if (widthPx <= 0) return
+        if (!heightEstimator.updateLayoutWidth(widthPx)) return
+        // Ширина изменилась (первый layout или поворот) — измеренные
+        // высоты больше не соответствуют вёрстке, пересчитываем ленту.
+        measuredHeights.clear()
+        rebuildFlatItems()
     }
 
     fun reportPageState(globalIndex: Int, newState: PageState) {
@@ -191,13 +223,15 @@ class FeedController(
         }
         for (window in loadedChapters) {
             for (pageRef in window.pages) {
+                val measured = measuredHeights[pageRef.id]
                 items.add(
                     FeedItem.Page(
                         chapterId = window.chapter.id,
                         chapterNumber = window.chapter.number,
                         pageRef = pageRef,
-                        layoutHeightPx = heightEstimator.estimate(pageRef),
-                        isHeightEstimated = pageRef.width == null || pageRef.height == null,
+                        layoutHeightPx = measured ?: heightEstimator.estimate(pageRef),
+                        isHeightEstimated = measured == null &&
+                            (pageRef.width == null || pageRef.height == null),
                     )
                 )
             }
@@ -236,10 +270,19 @@ class PlaceholderHeightEstimator(
     private var layoutWidthPx: Int = 1080,
     private val defaultAspect: Float = 1.45f, // height/width, typical webtoon panel block
 ) {
-    private var runningAverageHeight: Int = (layoutWidthPx * defaultAspect).toInt()
+    /**
+     * Среднее хранится как ОТНОШЕНИЕ высоты к ширине, а не как высота в
+     * пикселях: иначе после смены ширины ленты (первый layout, поворот)
+     * накопленное среднее становится мусором — оно из другой системы
+     * координат. Отношение переживает смену ширины без пересчёта.
+     */
+    private var runningAverageAspect: Float = defaultAspect
 
-    fun updateLayoutWidth(newWidthPx: Int) {
+    /** @return true, если ширина действительно изменилась. */
+    fun updateLayoutWidth(newWidthPx: Int): Boolean {
+        if (newWidthPx <= 0 || newWidthPx == layoutWidthPx) return false
         layoutWidthPx = newWidthPx
+        return true
     }
 
     fun estimate(pageRef: PageRef): Int {
@@ -248,13 +291,22 @@ class PlaceholderHeightEstimator(
         return if (w != null && h != null && w > 0) {
             (layoutWidthPx.toFloat() * h / w).toInt()
         } else {
-            runningAverageHeight
+            (layoutWidthPx * runningAverageAspect).toInt()
         }
     }
 
     fun endCapHeight(): Int = (layoutWidthPx * 0.6f).toInt()
 
+    /**
+     * Скользящее среднее по последним измеренным страницам. Вес 1/4 на
+     * новое значение: достаточно быстро сходится на однородной главе и
+     * не разлетается от одного разворота на две страницы.
+     */
     fun recordMeasured(actualHeightPx: Int) {
-        runningAverageHeight = ((runningAverageHeight * 3) + actualHeightPx) / 4
+        if (actualHeightPx <= 0 || layoutWidthPx <= 0) return
+        val aspect = actualHeightPx.toFloat() / layoutWidthPx
+        runningAverageAspect = (runningAverageAspect * 3f + aspect) / 4f
     }
+
+    internal fun currentAspect(): Float = runningAverageAspect
 }

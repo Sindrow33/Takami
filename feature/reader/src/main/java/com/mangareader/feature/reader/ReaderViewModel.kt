@@ -202,9 +202,22 @@ class ReaderViewModel(
             }
     }
 
-    /** Ширина ленты в px; вьюха сообщает её после первого layout. */
+    /**
+     * Ширина ленты в px; вьюха сообщает её после первого layout и при
+     * повороте. Прокидывается в [FeedController] — от неё зависит оценка
+     * высоты ещё не декодированных страниц, а это основной путь для
+     * источников без width/height в PageRef.
+     */
     @Volatile
     var layoutWidthPx: Int = 0
+        private set
+
+    fun onLayoutWidth(widthPx: Int) {
+        if (widthPx <= 0 || widthPx == layoutWidthPx) return
+        layoutWidthPx = widthPx
+        feed.updateLayoutWidth(widthPx)
+        if (lastCenterIndex >= 0) ensureWindowDecoded(lastCenterIndex)
+    }
 
     private suspend fun fetch(pageRef: PageRef): File {
         var result: File? = null
