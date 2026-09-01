@@ -11,6 +11,7 @@ import core.model.TerminalContent
 import core.net.OkHttpClientAdapter
 import core.store.SourceRegistry
 import core.validate.Verdict
+import dev.takami.app.news.DiscoveredNews
 import dev.takami.app.swipes.DiscoveredTitles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -56,23 +57,40 @@ class SourceProber(private val context: Context) {
              * список глав. Порядок такой, потому что пользователь чаще
              * вставляет ссылку на то, что открыл и хочет читать.
              */
-            val bundled = SourceConfig(host = host, profile = ContentProfile.of(MediaKind.MANGA))
+            /*
+             * Профиль выбирается по адресу.
+             *
+             * Новостная лента и каталог тайтлов разбираются одинаково,
+             * но проверяются по-разному: у новости нет ни глав, ни
+             * серий, и профиль манги забраковал бы верно разобранную
+             * ленту за отсутствие единиц.
+             */
+            val kind = if (looksLikeNews(url)) MediaKind.NEWS else MediaKind.MANGA
+            val bundled = SourceConfig(host = host, profile = ContentProfile.of(kind))
             val lines = mutableListOf<String>()
             var ok = false
 
-            for (kind in listOf(RequestKind.CONTENT, RequestKind.UNITS, RequestKind.LISTING)) {
+            // У новостей единиц не бывает — спрашивать про них
+            // бессмысленно, а лишний проход портит статистику здоровья.
+            val order = if (kind == MediaKind.NEWS) {
+                listOf(RequestKind.LISTING)
+            } else {
+                listOf(RequestKind.CONTENT, RequestKind.UNITS, RequestKind.LISTING)
+            }
+
+            for (requestKind in order) {
                 val result = engine.parse(
                     host = host,
                     html = response.body,
                     url = url,
                     bundled = bundled,
-                    kind = kind,
+                    kind = requestKind,
                     truncated = response.truncated,
                     browserHeaders = true,
                 )
                 result.configToPersist?.let(registry::persist)
 
-                val found = describe(result.payload)
+                val found = describe(result.payload, isNews = kind == MediaKind.NEWS)
                 if (result.isUsable && found != null) {
                     ok = true
                     lines += found
@@ -84,8 +102,16 @@ class SourceProber(private val context: Context) {
                      */
                     val listing = result.payload as? ParsedPayload.Listing
                     if (listing != null && listing.items.isNotEmpty()) {
-                        DiscoveredTitles(context).add(listing.items, host)
-                        lines += "Тайтлы добавлены в подбор свайпами."
+                        // Новости и тайтлы расходятся по разным
+                        // хранилищам: у них разный срок жизни и разное
+                        // место в интерфейсе.
+                        if (kind == MediaKind.NEWS) {
+                            DiscoveredNews(context).add(listing.items, host)
+                            lines += "Новости добавлены в ленту на главной."
+                        } else {
+                            DiscoveredTitles(context).add(listing.items, host)
+                            lines += "Тайтлы добавлены в подбор свайпами."
+                        }
                     }
                     lines += "Уверенность: ${percent(result.report.verdict.confidenceOrZero)}."
                     result.heal?.takeIf { !it.isEmpty }?.let {
@@ -125,8 +151,21 @@ class SourceProber(private val context: Context) {
         }
     }
 
+    /**
+     * Похож ли адрес на новостную ленту.
+     *
+     * По адресу, а не по разметке: профиль нужен ДО разбора, чтобы
+     * валидатор знал, чего ждать. Ошибка здесь не фатальна — каталог,
+     * принятый за новости, всё равно разберётся, просто про главы его
+     * не спросят.
+     */
+    private fun looksLikeNews(url: String): Boolean {
+        val path = url.substringAfter("://", url).lowercase()
+        return NEWS_MARKERS.any { it in path }
+    }
+
     /** Что именно нашли — в одну строку, без внутренних типов. */
-    private fun describe(payload: ParsedPayload): String? = when (payload) {
+    private fun describe(payload: ParsedPayload, isNews: Boolean = false): String? = when (payload) {
         is ParsedPayload.Content -> when (val content = payload.content) {
             is TerminalContent.Images ->
                 "Глава: ${content.pages.size} страниц.".takeIf { content.pages.isNotEmpty() }
@@ -137,10 +176,14 @@ class SourceProber(private val context: Context) {
         }
         is ParsedPayload.Units ->
             "Список глав: ${payload.units.size}.".takeIf { payload.units.isNotEmpty() }
-        is ParsedPayload.Listing ->
-            "Каталог: ${payload.items.size} тайтлов.".takeIf { payload.items.isNotEmpty() }
+        is ParsedPayload.Listing -> {
+            val what = if (isNews) "Новости: ${payload.items.size}." else "Каталог: ${payload.items.size} тайтлов."
+            what.takeIf { payload.items.isNotEmpty() }
+        }
         is ParsedPayload.Entry -> "Страница тайтла разобрана."
     }
+
+    private val NEWS_MARKERS = listOf("/news", "novosti", "/blog", "/article", "/press")
 
     /** Ниже этого объёма страница без содержимого выглядит как оболочка SPA. */
     private val DYNAMIC_HTML_LIMIT = 15_000

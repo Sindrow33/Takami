@@ -76,6 +76,7 @@ object ColdStart {
         val titleSpec = titleFieldOf(sample)
         val urlSpec = urlFieldOf(sample)
         val coverSpec = coverFieldOf(sample)
+        val dateSpec = dateFieldOf(sample)
 
         var out = config
         if (needListing) {
@@ -86,6 +87,11 @@ object ColdStart {
                         titleSpec?.let { put("title", it) }
                         urlSpec?.let { put("url", it) }
                         coverSpec?.let { put("cover", it) }
+                        // Дата снимается всегда, когда она в карточке
+                        // есть: новостной ленте она нужна для порядка,
+                        // а каталогу не мешает — лишним полем он не
+                        // становится хуже.
+                        dateSpec?.let { put("date", it) }
                     },
                 ),
             )
@@ -225,6 +231,39 @@ object ColdStart {
         val sel = relativeSelector(best, card) ?: return null
         return FieldSpec(selector = sel, required = true)
     }
+
+    /**
+     * Дата публикации в карточке.
+     *
+     * Сначала `<time>` — это семантический тег ровно под такой случай,
+     * и у него дата обычно лежит в `datetime`, машиночитаемой. Если
+     * тега нет, ищем узел, текст которого целиком похож на дату: у
+     * новостных лент это почти всегда отдельный маленький элемент.
+     */
+    private fun dateFieldOf(card: Node): FieldSpec? {
+        card.selectFirst("time")?.let { time ->
+            val sel = relativeSelector(time, card) ?: return@let
+            return if (time.attr("datetime").isNotBlank()) {
+                FieldSpec(selector = sel, transform = ValueTransform(attr = "datetime"))
+            } else {
+                FieldSpec(selector = sel)
+            }
+        }
+
+        val dated = card.descendants()
+            .filter { it.children().isEmpty() }
+            .firstOrNull { DATE_TEXT.containsMatchIn(it.ownText()) && it.ownText().length <= 40 }
+            ?: return null
+        val sel = relativeSelector(dated, card) ?: return null
+        return FieldSpec(selector = sel)
+    }
+
+    /** Похоже ли содержимое на дату: цифровые форматы и русские месяцы. */
+    private val DATE_TEXT = Regex(
+        """\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}|\d{4}-\d{2}-\d{2}|""" +
+            """\d{1,2}\s+(январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр)""",
+        RegexOption.IGNORE_CASE,
+    )
 
     private fun coverFieldOf(card: Node): FieldSpec? {
         val img = card.selectFirst("img[src]") ?: return null
