@@ -84,8 +84,25 @@ class SourceProber(private val context: Context) {
             }
 
             if (!ok) {
+                /*
+                 * Про скрипты говорим только при доказательствах.
+                 *
+                 * Раньше эта строка печаталась при любой неудаче, и
+                 * из-за неё живой сайт со статическим каталогом
+                 * выглядел как SPA: разбор падал по своей причине, а
+                 * виноватым назначался сайт. Признак «страницу собирают
+                 * скрипты» — это мало разметки при том, что теги
+                 * скриптов есть; всё остальное честнее назвать
+                 * непонятым.
+                 */
                 lines += "Разметку сняли, но ни глав, ни списка тайтлов не нашли."
-                lines += "Скорее всего страница собирается скриптами: статического HTML не хватает."
+                val looksDynamic = response.body.length < DYNAMIC_HTML_LIMIT &&
+                    response.body.contains("<script", ignoreCase = true)
+                lines += if (looksDynamic) {
+                    "Похоже, страница собирается скриптами: разметки мало, а скрипты есть."
+                } else {
+                    "Разметка на месте — её не удалось разобрать. Пришлите ссылку разработчику."
+                }
                 lines += "Размер ответа: ${response.bodySize} символов" +
                     if (response.truncated) " (обрезан по лимиту)." else "."
             }
@@ -112,6 +129,9 @@ class SourceProber(private val context: Context) {
             "Каталог: ${payload.items.size} тайтлов.".takeIf { payload.items.isNotEmpty() }
         is ParsedPayload.Entry -> "Страница тайтла разобрана."
     }
+
+    /** Ниже этого объёма страница без содержимого выглядит как оболочка SPA. */
+    private val DYNAMIC_HTML_LIMIT = 15_000
 
     private fun percent(value: Double): String = "${(value * 100).toInt()}%"
 
