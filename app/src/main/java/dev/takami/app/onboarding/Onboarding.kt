@@ -5,6 +5,16 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,13 +26,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import dev.takami.app.R
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import dev.takami.app.ui.components.*
 import dev.takami.app.ui.theme.Aurora
 import kotlinx.coroutines.delay
@@ -176,6 +193,64 @@ private fun PermsScreen(perms: MutableMap<String, Boolean>, onNext: () -> Unit) 
         Perm("storage", TakamiIcon.Folder, "Хранилище", "Офлайн-главы, кеш обложек, резервные копии"),
         Perm("battery", TakamiIcon.Battery, "Без экономии батареи", "Чтобы фоновые загрузки не обрывались"),
     )
+    val context = LocalContext.current
+
+    /*
+     * Раньше нажатие просто ставило флаг в памяти: кнопка «выдавала»
+     * разрешение, которого приложение никогда не получало. Системного
+     * диалога при этом не появлялось вовсе — со стороны это и выглядит
+     * как неработающая выдача. Теперь каждая карточка запускает
+     * настоящий системный запрос.
+     */
+    val notifyLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { perms["notify"] = it }
+
+    val storageLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result -> perms["storage"] = result.values.any { it } }
+
+    // Отключение экономии батареи и доступ ко всем файлам — не runtime-
+    // разрешения: их нельзя запросить диалогом, только увести в настройки.
+    val batteryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { perms["battery"] = context.isIgnoringBatteryOptimizations() }
+
+    // Синхронизация с системой: пользователь мог выдать или отозвать
+    // разрешение снаружи, и экран обязан показывать правду, а не память.
+    LaunchedEffect(Unit) {
+        perms["notify"] = context.hasNotificationPermission()
+        perms["storage"] = context.hasStoragePermission()
+        perms["battery"] = context.isIgnoringBatteryOptimizations()
+    }
+
+    fun request(key: String) {
+        when (key) {
+            "notify" ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    notifyLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    // До Android 13 разрешение выдаётся установкой приложения.
+                    perms["notify"] = true
+                }
+            "storage" ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    // Scoped storage: приложению хватает своего каталога,
+                    // спрашивать WRITE_EXTERNAL_STORAGE бессмысленно —
+                    // система его просто игнорирует.
+                    perms["storage"] = true
+                } else {
+                    storageLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.READ_EXTERNAL_STORAGE,
+                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                        )
+                    )
+                }
+            "battery" -> batteryLauncher.launch(context.batteryOptimizationIntent())
+        }
+    }
+
     val allGranted = list.all { perms[it.key] == true }
 
     Column(
@@ -202,7 +277,7 @@ private fun PermsScreen(perms: MutableMap<String, Boolean>, onNext: () -> Unit) 
                     .clip(RoundedCornerShape(16.dp))
                     .background(Color(0x08FFFFFF))
                     .border(1.dp, Aurora.Brd, RoundedCornerShape(16.dp))
-                    .clickable { perms[p.key] = true }
+                    .clickable(enabled = !granted) { request(p.key) }
                     .padding(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -229,11 +304,18 @@ private fun PermsScreen(perms: MutableMap<String, Boolean>, onNext: () -> Unit) 
                     Spacer(Modifier.height(2.dp))
                     Text(p.body, color = Aurora.OnSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp)
                 }
+                /*
+                 * Чип — самостоятельная кнопка, а не украшение. Раньше
+                 * clickable висел только на строке целиком, и палец,
+                 * попадающий точно по «Разрешить», не вызывал ничего:
+                 * визуально это выглядело как неработающая выдача.
+                 */
                 Box(
                     Modifier
                         .clip(RoundedCornerShape(Aurora.RadiusFull))
                         .background(if (granted) Aurora.Ok.copy(alpha = .16f) else Aurora.Acc.copy(alpha = .16f))
-                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                        .clickable(enabled = !granted) { request(p.key) }
+                        .padding(horizontal = 12.dp, vertical = 7.dp)
                 ) {
                     Text(
                         if (granted) "Выдано" else "Разрешить",
@@ -315,6 +397,40 @@ private fun WelcomeScreen(onDone: () -> Unit) {
         Text("り", color = Aurora.HaloPink.copy(alpha = .06f), fontSize = 160.sp, fontWeight = FontWeight.Black,
             modifier = Modifier.align(Alignment.BottomStart).offset(x = 120.dp, y = (-160).dp))
 
+        // Искры
+        Sparkles(Modifier.fillMaxSize())
+
+        /*
+         * Иллюстрация. В прошлой сборке её не было вовсе: ассет
+         * welcome-girl.png остался в хендоффе и не переехал в res —
+         * экран выглядел пустым между иероглифами и кнопкой.
+         * Анимация двухслойная, как в прототипе: дыхание всего блока
+         * (girlBreath, 3.6 с) и покачивание самой картинки
+         * (girlSway, ±1.2°, 4.8 с) с опорой по нижнему краю.
+         */
+        val girlBreath by t.animateFloat(
+            initialValue = 1f, targetValue = 1.012f,
+            animationSpec = infiniteRepeatable(tween(3600, easing = Aurora.Ease), RepeatMode.Reverse),
+            label = "girlBreath",
+        )
+        val girlSway by t.animateFloat(
+            initialValue = -1.2f, targetValue = 1.2f,
+            animationSpec = infiniteRepeatable(tween(4800, easing = Aurora.Ease), RepeatMode.Reverse),
+            label = "girlSway",
+        )
+        Image(
+            painter = painterResource(R.drawable.welcome_girl),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            alignment = Alignment.BottomCenter,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(0.92f)
+                .fillMaxHeight(0.72f)
+                .scale(girlBreath)
+                .rotate(girlSway),
+        )
+
         // Речевой пузырёк
         Column(
             Modifier
@@ -361,6 +477,61 @@ private fun WelcomeScreen(onDone: () -> Unit) {
 
 /* ---------------- helpers ---------------- */
 
+/** Летающие искры вокруг персонажа: 8 точек, sparkleFloat 5s, разные фазы. */
+@Composable
+private fun Sparkles(modifier: Modifier = Modifier) {
+    data class Spark(val x: Float, val y: Float, val size: Int, val color: Color, val delayMs: Int)
+
+    val sparks = remember {
+        listOf(
+            Spark(.18f, .12f, 4, Color.White, 0),
+            Spark(.86f, .20f, 4, Color(0xFFFFB0D0), 700),
+            Spark(.08f, .34f, 4, Color.White, 1400),
+            Spark(.92f, .42f, 4, Color.White, 2100),
+            Spark(.22f, .55f, 3, Color.White, 2800),
+            Spark(.80f, .62f, 4, Color.White, 3500),
+            Spark(.45f, .08f, 5, Aurora.Acc2, 4200),
+            Spark(.68f, .28f, 3, Color.White, 1000),
+        )
+    }
+    val t = rememberInfiniteTransition(label = "sparkles")
+
+    Box(modifier) {
+        sparks.forEach { sp ->
+            val phase by t.animateFloat(
+                initialValue = 0f, targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    tween(5000, easing = Aurora.Ease),
+                    RepeatMode.Restart,
+                    initialStartOffset = androidx.compose.animation.core.StartOffset(sp.delayMs),
+                ),
+                label = "spark",
+            )
+            // opacity: 0 -> 1 (20%) -> 1 (80%) -> 0; смещение вверх-влево
+            val alpha = when {
+                phase < .2f -> phase / .2f
+                phase > .8f -> (1f - phase) / .2f
+                else -> 1f
+            }
+            val scale = if (phase < .5f) .4f + phase * 1.2f else 1f - (phase - .5f) * 1.2f
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .offset(
+                            x = maxWidth * sp.x - (phase * 12).dp,
+                            y = maxHeight * sp.y - (phase * 36).dp,
+                        )
+                        .size(sp.size.dp)
+                        .scale(scale.coerceIn(.3f, 1f))
+                        .alpha(alpha.coerceIn(0f, 1f))
+                        .clip(RoundedCornerShape(Aurora.RadiusFull))
+                        .background(sp.color)
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun Star(modifier: Modifier = Modifier) {
     androidx.compose.foundation.Canvas(modifier) {
@@ -378,4 +549,37 @@ private fun Star(modifier: Modifier = Modifier) {
         path.close()
         drawPath(path, Color.White)
     }
+}
+
+
+/* ---------------- системные разрешения ---------------- */
+
+private fun Context.hasNotificationPermission(): Boolean =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+    else true
+
+private fun Context.hasStoragePermission(): Boolean =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) true
+    else ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+
+private fun Context.isIgnoringBatteryOptimizations(): Boolean = runCatching {
+    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+    pm.isIgnoringBatteryOptimizations(packageName)
+}.getOrDefault(false)
+
+/**
+ * Прямой диалог отключения экономии доступен не на всех прошивках, и на
+ * части из них запуск падает с ActivityNotFoundException. Поэтому здесь
+ * же готовится запасной путь — общий экран настроек приложения.
+ */
+private fun Context.batteryOptimizationIntent(): Intent {
+    val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+        .setData(Uri.parse("package:$packageName"))
+    val resolvable = packageManager.resolveActivity(direct, 0) != null
+    return if (resolvable) direct
+    else Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+        .setData(Uri.parse("package:$packageName"))
 }

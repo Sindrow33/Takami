@@ -519,45 +519,8 @@ class ChallengeDetector {
  * 7. АБСОЛЮТНЫЕ ССЫЛКИ
  * ===================================================================== */
 
-/**
- * Jsoup умеет absUrl, но только когда узел взят из документа с baseUri.
- * Значения, вытащенные из JSON или из скриптов, приходят без контекста —
- * им нужен независимый резолвер.
+/*
+ * Здесь был второй UrlTools, дублировавший core.parse.UrlTools с другой
+ * реализацией looksLikeUrl. Дубль убран: единственная версия живёт в
+ * core.parse, сетевой слой импортирует её.
  */
-object UrlTools {
-
-    fun absolutize(url: String, base: String): String {
-        val u = url.trim()
-        if (u.isEmpty()) return u
-        return when {
-            u.startsWith("http://") || u.startsWith("https://") -> u
-            u.startsWith("//") -> (schemeOf(base) ?: "https") + ":" + u
-            u.startsWith("data:") || u.startsWith("blob:") -> u
-            else -> runCatching { java.net.URI(base).resolve(u).toString() }.getOrDefault(u)
-        }
-    }
-
-    fun schemeOf(url: String): String? = runCatching { java.net.URI(url).scheme }.getOrNull()
-
-    /** Одна ли это площадка. Нужно для фильтрации картинок по хосту. */
-    fun sameSite(a: String, b: String): Boolean {
-        val ha = registrable(a) ?: return false
-        val hb = registrable(b) ?: return false
-        return ha == hb
-    }
-
-    /** Грубая «регистрируемая» часть: последние два уровня домена. */
-    private fun registrable(url: String): String? {
-        val host = runCatching { java.net.URI(url).host }.getOrNull() ?: return null
-        val parts = host.removePrefix("www.").split('.')
-        return if (parts.size <= 2) host.removePrefix("www.")
-        else parts.takeLast(2).joinToString(".")
-    }
-
-    fun looksLikeUrl(value: String): Boolean {
-        val v = value.trim()
-        if (v.length < 4 || v.contains(' ')) return false
-        return v.startsWith("http://") || v.startsWith("https://") ||
-               v.startsWith("//") || v.startsWith("/")
-    }
-}

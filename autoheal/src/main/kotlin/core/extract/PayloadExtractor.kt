@@ -8,16 +8,16 @@ import core.parse.ValueReader
 
 enum class RequestKind { LISTING, ENTRY, UNITS, CONTENT }
 
-class StandardExtractor {
+class StandardExtractor(
+    private val terminal: core.terminal.TerminalExtractor = core.terminal.TerminalExtractor(),
+) {
 
     fun extract(kind: RequestKind, dom: Dom, config: SourceConfig, url: String = dom.baseUri): Extracted = when (kind) {
         RequestKind.LISTING -> listing(dom, config)
         RequestKind.ENTRY -> entry(dom, config)
         RequestKind.UNITS -> units(dom, config)
         RequestKind.CONTENT -> Extracted(
-            ParsedPayload.Content(
-                TerminalContent.Unavailable(BlockReason.UNKNOWN, "терминальный слой не подключён")
-            ),
+            ParsedPayload.Content(terminal.extract(dom, config, url)),
             ExtractionTrace(),
         )
     }
