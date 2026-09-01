@@ -44,7 +44,7 @@ class PageDownloadTest {
             onProgress: (Long, Long?) -> Unit,
         ) {
             seenHeaders = headers
-            val part = File(target.parentFile, target.name + ".part")
+            val part = File(target.parentFile, "incomplete/" + target.name + ".part")
             part.parentFile?.mkdirs()
             part.outputStream().use { out ->
                 val limit = failAfter ?: bytes.size
@@ -94,7 +94,22 @@ class PageDownloadTest {
         assertFalse("огрызок не должен доехать до целевого файла", target.exists())
         assertTrue(
             "временный .part тоже не должен остаться",
-            dir.listFiles()?.none { it.name.endsWith(".part") } ?: true,
+            dir.walkTopDown().none { it.name.endsWith(".part") },
+        )
+    }
+
+    @Test
+    fun `незавершённая закачка лежит вне каталога готовых страниц`() = runTest {
+        val dir = tmp.newFolder()
+        val target = File(dir, "page")
+
+        FakeFetcher(jpegLike).download("https://cdn/a.jpg", emptyMap(), target)
+
+        // Верхний уровень каталога считает и вытесняет дисковый кеш
+        // читалки — временным файлам там быть нельзя.
+        assertEquals(
+            listOf("incomplete", "page"),
+            dir.listFiles()!!.map { it.name }.sorted(),
         )
     }
 
