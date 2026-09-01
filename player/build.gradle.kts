@@ -18,6 +18,10 @@ android {
 }
 
 dependencies {
+    // Токены оформления приложения — экран-обёртка host/AnimeScreen должна выглядеть
+    // как остальные вкладки, а не как отдельное приложение.
+    implementation(project(":core:design"))
+
     val media3 = "1.5.1"
     api("androidx.media3:media3-exoplayer:$media3")
     api("androidx.media3:media3-exoplayer-hls:$media3")

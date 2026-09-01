@@ -18,6 +18,17 @@ data class SkipSegment(
         }
 }
 
+/**
+ * Сегмент, который надо предложить пропустить на позиции [ms].
+ *
+ * AniSkip отдаёт перекрывающиеся сегменты (типовой случай: рекап 0:00-0:30 и
+ * опенинг 0:12-1:42). Наивный `firstOrNull` брал рекап и перематывал на 0:30 —
+ * то есть в середину опенинга, и кнопка появлялась второй раз. Берём сегмент с
+ * самым дальним концом: один тап уводит за все перекрытые сегменты сразу.
+ */
+fun activeSegmentAt(segments: List<SkipSegment>, ms: Long): SkipSegment? =
+    segments.filter { it.contains(ms) }.maxByOrNull { it.endMs }
+
 interface SkipProvider {
     val name: String
     suspend fun segments(malId: Int?, episode: Int, durationMs: Long): List<SkipSegment>
