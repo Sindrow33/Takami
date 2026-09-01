@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,7 +58,7 @@ fun TabBar(
             TabItem(TakamiIcon.Calendar, "Календарь", active == Tab.Calendar, Modifier.weight(1f), badge = calendarBadge) { onSelect(Tab.Calendar) }
             TabItem(TakamiIcon.Settings, "Настройки", active == Tab.Settings, Modifier.weight(1f)) { onSelect(Tab.Settings) }
         }
-        Fab(fabLoading, Modifier.align(Alignment.TopCenter).offset(y = (-26).dp), onFab)
+        Fab(fabLoading, Modifier.align(Alignment.TopCenter).offset(y = (-30).dp), onFab)
     }
 }
 
@@ -78,16 +79,30 @@ private fun TabItem(
         Box {
             Icon(icon, Modifier.size(22.dp), if (selected) Aurora.Primary else Aurora.OnSurfaceVariant)
             if (badge > 0) {
+                /*
+                 * Бейдж тянется по содержимому, а не сидит в жёстких 14dp:
+                 * там цифра прижималась к краю круга и выглядела съехавшей,
+                 * а двузначное число не помещалось вовсе.
+                 */
                 Box(
                     Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = 6.dp, y = (-4).dp)
-                        .size(14.dp)
+                        .offset(x = 9.dp, y = (-6).dp)
+                        .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
                         .clip(RoundedCornerShape(Aurora.RadiusFull))
-                        .background(Aurora.Acc),
+                        .background(Aurora.Acc)
+                        .border(1.5.dp, Aurora.SurfaceContainer, RoundedCornerShape(Aurora.RadiusFull))
+                        .padding(horizontal = 4.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("$badge", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (badge > 99) "99+" else "$badge",
+                        color = Color.White,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 10.sp,
+                        maxLines = 1,
+                    )
                 }
             }
         }
@@ -112,7 +127,9 @@ private fun Fab(loading: Boolean, modifier: Modifier = Modifier, onClick: () -> 
 
     Box(
         modifier
-            .size(56.dp)
+            // 64dp вместо 56: на устройстве кнопка читалась мелкой
+            // относительно таббара и попасть по ней было неудобно.
+            .size(64.dp)
             .scale(if (loading) pulse else 1f)
             .clip(RoundedCornerShape(Aurora.RadiusFull))
             .background(Aurora.AccentGradient)
@@ -121,14 +138,14 @@ private fun Fab(loading: Boolean, modifier: Modifier = Modifier, onClick: () -> 
         contentAlignment = Alignment.Center,
     ) {
         if (loading) {
-            Canvas(Modifier.size(26.dp).rotate(spin)) {
+            Canvas(Modifier.size(29.dp).rotate(spin)) {
                 drawArc(
                     color = Color.White, startAngle = 0f, sweepAngle = 228f, useCenter = false,
                     style = Stroke(2.6.dp.toPx(), cap = StrokeCap.Round),
                 )
             }
         } else {
-            Icon(TakamiIcon.Swipes, Modifier.size(24.dp), Color.White)
+            Icon(TakamiIcon.Swipes, Modifier.size(27.dp), Color.White)
         }
     }
 }

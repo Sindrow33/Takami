@@ -18,6 +18,32 @@ android {
         debug { isMinifyEnabled = false }
         release { isMinifyEnabled = false }
     }
+
+    /*
+     * Нативные библиотеки перевода (ONNX Runtime + translate JNI) весят
+     * по ~17 МБ на архитектуру. Со всеми четырьмя ABI в одном APK сборка
+     * распухла с 11 до 186 МБ — столько никто ставить не будет.
+     * Оставляем только реальные ABI устройств; x86 нужен эмулятору,
+     * поэтому он тоже здесь, но 32-битный ARM уже нигде не встречается.
+     */
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "x86_64")
+            isUniversalApk = false
+        }
+    }
+
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/{AL2.0,LGPL2.1}",
+                "META-INF/DEPENDENCIES",
+                "META-INF/*.kotlin_module",
+            )
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

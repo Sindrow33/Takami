@@ -86,16 +86,18 @@ private fun SplashScreen(onNext: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            Modifier
+        /*
+         * Логотип приложения. Раньше здесь была временная звезда на
+         * градиенте — заглушка, которая так и уехала в сборку.
+         */
+        Image(
+            painter = painterResource(R.drawable.takami_logo),
+            contentDescription = "Takami",
+            modifier = Modifier
                 .size(108.dp)
                 .scale(breath)
-                .clip(RoundedCornerShape(30.dp))
-                .background(Brush.linearGradient(listOf(Aurora.GradA, Aurora.GradB))),
-            contentAlignment = Alignment.Center,
-        ) {
-            Star(Modifier.size(56.dp))
-        }
+                .clip(RoundedCornerShape(30.dp)),
+        )
         Spacer(Modifier.height(24.dp))
         Text("Takami", color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.88).sp)
         Spacer(Modifier.height(6.dp))
@@ -426,7 +428,10 @@ private fun WelcomeScreen(onDone: () -> Unit) {
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(0.92f)
-                .fillMaxHeight(0.72f)
+                // Выше и крупнее: на сборке персонаж стоял слишком низко,
+                // между пузырьком и головой оставался пустой провал.
+                .fillMaxHeight(0.82f)
+                .offset(y = (-56).dp)
                 .scale(girlBreath)
                 .rotate(girlSway),
         )
@@ -532,24 +537,6 @@ private fun Sparkles(modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-private fun Star(modifier: Modifier = Modifier) {
-    androidx.compose.foundation.Canvas(modifier) {
-        val r = size.minDimension / 2f
-        val cx = size.width / 2f
-        val cy = size.height / 2f
-        val path = androidx.compose.ui.graphics.Path()
-        for (i in 0 until 10) {
-            val radius = if (i % 2 == 0) r else r * 0.42f
-            val a = Math.toRadians((-90 + i * 36).toDouble())
-            val x = cx + radius * kotlin.math.cos(a).toFloat()
-            val y = cy + radius * kotlin.math.sin(a).toFloat()
-            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-        }
-        path.close()
-        drawPath(path, Color.White)
-    }
-}
 
 
 /* ---------------- системные разрешения ---------------- */

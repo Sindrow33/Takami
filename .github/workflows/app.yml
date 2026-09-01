@@ -23,6 +23,8 @@ jobs:
         run: gradle :autoheal:test --no-daemon --stacktrace
       - name: Reader unit tests
         run: gradle :reader:engine:testDebugUnitTest --no-daemon --stacktrace
+      - name: Reader unit tests
+        run: gradle :reader:engine:testDebugUnitTest --no-daemon --stacktrace
       - name: Reader modules assemble
         run: gradle :feature:reader:assembleDebug :reader:ui:assembleDebug :core:design:assembleDebug --no-daemon --stacktrace
       - name: App unit tests

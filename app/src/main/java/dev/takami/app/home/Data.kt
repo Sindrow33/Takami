@@ -37,3 +37,45 @@ object MockDb {
 
     fun byType(type: ContentType) = titles.filter { it.type == type }
 }
+
+/** Новость индустрии для карусели на главной. */
+data class NewsItem(
+    val id: String,
+    val category: String,
+    val title: String,
+    val subtitle: String,
+    val source: String,
+    val age: String,
+    val tone: NewsTone,
+)
+
+enum class NewsTone(val accent: Color, val coverFrom: Color, val coverTo: Color) {
+    Primary(Aurora.Acc, Color(0xFF3B2A6B), Color(0xFF141821)),
+    Cyan(Aurora.Acc3, Color(0xFF123A4B), Color(0xFF141821)),
+    Warn(Aurora.Warn, Color(0xFF4B2740), Color(0xFF141821)),
+    Ok(Aurora.Ok, Color(0xFF1F4636), Color(0xFF141821)),
+}
+
+/** Лента новостей. Моки из `kit/data.js`; позже придут из источников. */
+val newsFeed = listOf(
+    NewsItem(
+        "n1", "Индустрия", "MAPPA анонсировала финальный сезон",
+        "Премьера — весна 2027, 24 эпизода одним куском",
+        "Anime News Network", "2 ч назад", NewsTone.Primary,
+    ),
+    NewsItem(
+        "n2", "Трейлер", "Первый ролик экранизации ранобэ",
+        "ufotable показала 90 секунд боёвки и опенинг",
+        "YouTube · ufotable", "5 ч назад", NewsTone.Cyan,
+    ),
+    NewsItem(
+        "n3", "Манга", "Автор уходит в перерыв на 3 месяца",
+        "После 12-й арки — плановая пауза, чтобы «не сгореть»",
+        "Weekly Shonen Jump", "вчера", NewsTone.Warn,
+    ),
+    NewsItem(
+        "n4", "Релиз", "На AniLibria обновлена озвучка",
+        "Полная переозвучка первого сезона, +40 % битрейта",
+        "AniLibria", "2 дня назад", NewsTone.Ok,
+    ),
+)
