@@ -118,6 +118,20 @@ class FeedController(
         heightEstimator.recordMeasured(actualHeightPx)
 
         items[globalIndex] = current.copy(layoutHeightPx = actualHeightPx, isHeightEstimated = false)
+
+        // Среднее изменилось — подтягиваем оценку у ВСЕХ ещё не
+        // измеренных страниц. Без этого уточнение доставалось бы только
+        // будущим главам: элементы ленты получают оценку один раз, при
+        // сборке списка, и дальше живут с ней до самого декодирования.
+        val refreshedEstimate = heightEstimator.estimate(current.pageRef.copy(width = null, height = null))
+        for (i in items.indices) {
+            val page = items[i] as? FeedItem.Page ?: continue
+            if (!page.isHeightEstimated) continue
+            if (page.pageRef.width != null && page.pageRef.height != null) continue
+            if (page.layoutHeightPx == refreshedEstimate) continue
+            items[i] = page.copy(layoutHeightPx = refreshedEstimate)
+        }
+
         _state.update { it.copy(items = items) }
     }
 
