@@ -2,6 +2,7 @@ package com.mangareader.feature.reader
 
 import com.mangareader.core.model.ChapterInfo
 import com.mangareader.core.model.MangaPageSource
+import com.mangareader.reader.engine.cache.DiskLruPageCache
 import com.mangareader.reader.engine.settings.ReaderSettingsStore
 
 /**
@@ -26,6 +27,14 @@ object ReaderSourceRegistry {
      */
     @Volatile
     var settingsStore: ReaderSettingsStore = ReaderSettingsStore.None
+
+    /**
+     * Дисковый кеш страниц. Ставится хостом один раз при старте — он
+     * знает, где у приложения кеш-каталог и какой лимит выставил
+     * пользователь.
+     */
+    @Volatile
+    var diskCache: DiskLruPageCache? = null
 
     private val sources = LinkedHashMap<String, MangaPageSource>()
     private val chapterLookups = LinkedHashMap<String, suspend (String) -> ChapterInfo>()

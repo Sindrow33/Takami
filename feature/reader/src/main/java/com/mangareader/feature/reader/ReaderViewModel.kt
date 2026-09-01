@@ -10,6 +10,7 @@ import com.mangareader.core.model.MangaPageSource
 import com.mangareader.core.model.PageLoad
 import com.mangareader.core.model.PageRef
 import com.mangareader.core.model.ReaderEvent
+import com.mangareader.reader.engine.cache.DiskLruPageCache
 import com.mangareader.reader.engine.cache.PagePrefetcher
 import com.mangareader.reader.engine.decode.PageDecoder
 import com.mangareader.reader.engine.feed.FeedController
@@ -70,6 +71,12 @@ class ReaderViewModel(
     private val eventBus: ReaderEventBus,
     private val settingsStore: ReaderSettingsStore = ReaderSettingsStore.None,
     private val seriesId: String = "",
+    /**
+     * Дисковый кеш страниц между сессиями. Без него каждое открытие
+     * читалки качает главу заново — на локальных файлах незаметно, на
+     * сетевом источнике это полная перезагрузка.
+     */
+    private val diskCache: DiskLruPageCache? = null,
 ) : ViewModel() {
 
     private val feed = FeedController(
@@ -88,7 +95,11 @@ class ReaderViewModel(
      * Класс был написан, но не подключён ни к чему — до этой правки
      * упреждающей загрузки не существовало.
      */
-    private val prefetcher = PagePrefetcher(source = source, scope = viewModelScope)
+    private val prefetcher = PagePrefetcher(
+        source = source,
+        scope = viewModelScope,
+        diskCache = diskCache,
+    )
 
     private val _state = MutableStateFlow(ReaderUiState())
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
@@ -293,9 +304,13 @@ class ReaderViewModel(
     }
 
     private suspend fun loadAndDecode(globalIndex: Int, pageRef: PageRef) {
-        // Упреждающая загрузка могла уже принести файл — тогда сетевой
-        // запрос не нужен вовсе.
-        val cached = loadedFiles[pageRef.id] ?: prefetcher.cachedFile(pageRef.id)
+        // Порядок важен: память → упреждающая загрузка → диск → сеть.
+        // Диск проверяется по URI И заголовкам страницы: один и тот же
+        // URL с разным Referer у хостингов картинок отдаёт разное —
+        // настоящую страницу или заглушку с 403.
+        val cached = loadedFiles[pageRef.id]
+            ?: prefetcher.cachedFile(pageRef.id)
+            ?: diskCache?.get(pageRef)
         val file = cached ?: runCatching { fetch(pageRef) }.getOrElse { t ->
             decodeRequested.remove(pageRef.id)
             feed.reportPageState(globalIndex, PageState.ERROR)
@@ -303,6 +318,10 @@ class ReaderViewModel(
             return
         }
         loadedFiles[pageRef.id] = file
+        // Кладём в дисковый кеш только то, что скачано сейчас: файл,
+        // пришедший из самого кеша или из локального источника,
+        // копировать в него бессмысленно.
+        if (cached == null) cacheOnDisk(pageRef, file)
 
         runCatching { PageDecoder.decodeForDisplay(file) }
             .onSuccess { bitmap ->
@@ -324,6 +343,17 @@ class ReaderViewModel(
                 feed.reportPageState(globalIndex, PageState.ERROR)
                 eventBus.emit(ReaderEvent.Failure(FailureKind.PAGE_LOAD, t.message ?: t.toString()))
             }
+    }
+
+    /**
+     * Сохраняет скачанную страницу на диск. Локальные источники
+     * (папка, CBZ) отдают файл, который и так лежит на устройстве —
+     * дублировать его в кеш значило бы занять место второй раз.
+     */
+    private suspend fun cacheOnDisk(pageRef: PageRef, file: File) {
+        val cache = diskCache ?: return
+        if (!pageRef.uri.startsWith("http", ignoreCase = true)) return
+        runCatching { cache.put(pageRef, file.readBytes()) }
     }
 
     /**
@@ -375,9 +405,12 @@ class ReaderViewModel(
         private val eventBus: ReaderEventBus,
         private val settingsStore: ReaderSettingsStore = ReaderSettingsStore.None,
         private val seriesId: String = "",
+        private val diskCache: DiskLruPageCache? = null,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            ReaderViewModel(source, chapterLookup, eventBus, settingsStore, seriesId) as T
+            ReaderViewModel(
+                source, chapterLookup, eventBus, settingsStore, seriesId, diskCache,
+            ) as T
     }
 }

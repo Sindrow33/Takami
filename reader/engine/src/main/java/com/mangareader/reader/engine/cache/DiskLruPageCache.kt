@@ -1,5 +1,6 @@
 package com.mangareader.reader.engine.cache
 
+import com.mangareader.core.model.PageRef
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
@@ -15,6 +16,11 @@ import java.security.MessageDigest
  * hash is only computable after at least one decode). This is distinct
  * from and much larger than the translation JSON cache, which per §8 is
  * NOT subject to this LRU eviction because it is tiny and precious.
+ *
+ * Ключ считается по URI **и заголовкам запроса** ([keyFor]). Один и тот
+ * же URL с разным `Referer` на многих хостингах картинок отдаёт разное:
+ * настоящую страницу или заглушку с 403. Ключ по одному URL склеил бы
+ * их в одну запись, и в кеше навсегда осела бы заглушка.
  */
 class DiskLruPageCache(
     private val directory: File,
@@ -22,6 +28,13 @@ class DiskLruPageCache(
 ) {
     companion object {
         const val DEFAULT_MAX_SIZE_BYTES = 512L * 1024 * 1024
+
+        /**
+         * Заголовки, реально влияющие на тело ответа у хостингов
+         * картинок. `Referer`/`Origin` — то, без чего прилетает 403;
+         * `Cookie` — сессия, за которой может стоять другой контент.
+         */
+        private val KEYED_HEADERS = setOf("referer", "origin", "cookie")
     }
 
     private val mutex = Mutex()
@@ -34,25 +47,56 @@ class DiskLruPageCache(
         maxSizeBytes = bytes
     }
 
-    fun fileFor(uri: String): File {
-        val key = sha1(uri)
-        return File(directory, key)
+    /**
+     * Ключ кеша: URI плюс заголовки, влияющие на ответ.
+     *
+     * Учитываются не все заголовки подряд — только [KEYED_HEADERS].
+     * Иначе меняющийся `User-Agent` или случайный `X-Request-Id`
+     * промахивались бы мимо кеша на каждом запросе, и он не работал бы
+     * вовсе. Имена приводятся к нижнему регистру и сортируются, чтобы
+     * порядок и регистр не порождали разные ключи для одного запроса.
+     */
+    fun keyFor(uri: String, headers: Map<String, String> = emptyMap()): String {
+        val relevant = headers
+            .filterKeys { it.lowercase() in KEYED_HEADERS }
+            .map { (name, value) -> "${name.lowercase()}=$value" }
+            .sorted()
+        return if (relevant.isEmpty()) sha1(uri) else sha1(uri + "\n" + relevant.joinToString("\n"))
     }
 
-    suspend fun put(uri: String, bytes: ByteArray): File = mutex.withLock {
-        val file = fileFor(uri)
-        file.writeBytes(bytes)
-        file.setLastModified(System.currentTimeMillis())
-        evictIfNeeded()
-        file
-    }
+    fun fileFor(uri: String, headers: Map<String, String> = emptyMap()): File =
+        File(directory, keyFor(uri, headers))
 
-    suspend fun get(uri: String): File? = mutex.withLock {
-        val file = fileFor(uri)
-        if (file.exists()) {
+    /** Файл для страницы — заголовки берутся из самой [PageRef]. */
+    fun fileFor(page: PageRef): File = fileFor(page.uri, page.headers)
+
+    suspend fun put(uri: String, bytes: ByteArray, headers: Map<String, String> = emptyMap()): File =
+        mutex.withLock {
+            val file = fileFor(uri, headers)
+            file.writeBytes(bytes)
+            file.setLastModified(System.currentTimeMillis())
+            evictIfNeeded()
+            file
+        }
+
+    suspend fun put(page: PageRef, bytes: ByteArray): File = put(page.uri, bytes, page.headers)
+
+    suspend fun get(uri: String, headers: Map<String, String> = emptyMap()): File? = mutex.withLock {
+        val file = fileFor(uri, headers)
+        if (file.exists() && file.length() > 0) {
             file.setLastModified(System.currentTimeMillis())
             file
         } else null
+    }
+
+    suspend fun get(page: PageRef): File? = get(page.uri, page.headers)
+
+    /** Сколько байт сейчас занято — для настроек и диагностики. */
+    fun sizeBytes(): Long = directory.listFiles()?.sumOf { it.length() } ?: 0L
+
+    suspend fun clear() = mutex.withLock {
+        directory.listFiles()?.forEach { it.delete() }
+        Unit
     }
 
     private fun evictIfNeeded() {

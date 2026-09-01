@@ -26,6 +26,12 @@ class PagePrefetcher(
     private val source: MangaPageSource,
     private val scope: CoroutineScope,
     maxParallelDownloads: Int = 3,
+    /**
+     * Дисковый кеш страниц. Если передан — уже скачанная в прошлой
+     * сессии страница не качается повторно, и загрузка вообще не
+     * стартует.
+     */
+    private val diskCache: DiskLruPageCache? = null,
 ) {
     private val semaphore = Semaphore(maxParallelDownloads)
     private val inFlight = ConcurrentHashMap<String, Job>()
@@ -52,6 +58,13 @@ class PagePrefetcher(
     fun request(page: PageRef, priority: Int = 1) {
         if (results.containsKey(page.id) || inFlight.containsKey(page.id)) return
         val job = scope.launch {
+            // Диск проверяется до семафора: попадание в кеш не должно
+            // занимать слот параллельной загрузки.
+            diskCache?.get(page)?.let { cached ->
+                results[page.id] = cached
+                inFlight.remove(page.id)
+                return@launch
+            }
             semaphore.withPermit {
                 source.open(page)
                     .catch { /* swallowed: a later on-demand open() on this page will surface the error via UI */ }

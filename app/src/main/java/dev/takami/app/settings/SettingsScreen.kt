@@ -19,10 +19,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mangareader.feature.reader.ReaderSourceRegistry
 import core.engine.ParserStats
 import dev.takami.app.parser.ParserState
 import dev.takami.app.ui.theme.Aurora
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -39,9 +41,17 @@ fun SettingsScreen(prefs: AppSettingsStore = AppSettingsStore(LocalContext.curre
     var proxyEnabled by remember { mutableStateOf(prefs.proxyEnabled) }
     var autoHealEnabled by remember { mutableStateOf(prefs.autoHealEnabled) }
     var wifiOnlyDownloads by remember { mutableStateOf(prefs.wifiOnlyDownloads) }
+    var cacheBytes by remember { mutableStateOf(0L) }
+    var cacheRefresh by remember { mutableStateOf(0) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         stats = withContext(Dispatchers.IO) { ParserState(context).stats() }
+    }
+    LaunchedEffect(cacheRefresh) {
+        cacheBytes = withContext(Dispatchers.IO) {
+            ReaderSourceRegistry.diskCache?.sizeBytes() ?: 0L
+        }
     }
 
     Column(
@@ -74,6 +84,31 @@ fun SettingsScreen(prefs: AppSettingsStore = AppSettingsStore(LocalContext.curre
                 value = "папки и CBZ",
             )
             Hint("Онлайн-источники появятся здесь после подключения парсера.")
+        }
+
+        Section("Хранилище") {
+            InfoRow(title = "Кеш страниц", value = formatSize(cacheBytes))
+            Hint(
+                "Скачанные страницы хранятся, чтобы перечитывание не тратило трафик. " +
+                    "Предел — ${formatSize(prefs.pageCacheLimitBytes)}; система может очистить кеш сама при нехватке места.",
+            )
+            if (cacheBytes > 0) {
+                Text(
+                    "Очистить кеш",
+                    color = Aurora.Acc2,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(Aurora.RadiusFull))
+                        .clickable {
+                            scope.launch {
+                                withContext(Dispatchers.IO) { ReaderSourceRegistry.diskCache?.clear() }
+                                cacheRefresh++
+                            }
+                        }
+                        .padding(vertical = 4.dp),
+                )
+            }
         }
 
         Section("Сеть") {
@@ -187,6 +222,14 @@ private fun InfoRow(title: String, value: String) {
         Text(title, color = Aurora.OnSurface, fontSize = 14.sp)
         Text(value, color = Aurora.OnSurfaceVariant, fontSize = 13.sp)
     }
+}
+
+/** Человекочитаемый размер: КБ/МБ/ГБ без лишней точности. */
+internal fun formatSize(bytes: Long): String = when {
+    bytes <= 0 -> "пусто"
+    bytes < 1024L * 1024 -> "${bytes / 1024} КБ"
+    bytes < 1024L * 1024 * 1024 -> "${bytes / (1024 * 1024)} МБ"
+    else -> String.format("%.1f ГБ", bytes / (1024.0 * 1024 * 1024))
 }
 
 @Composable
