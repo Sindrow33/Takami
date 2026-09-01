@@ -165,17 +165,11 @@ private fun EpisodePlayer(
             segments = segments,
             autoSkip = false,
             modifier = Modifier.fillMaxSize(),
-        )
-        Text(
-            text = "‹ Назад",
-            color = Color.White,
-            fontSize = 15.sp,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(12.dp)
-                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                .clickable { onExit() }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+            // «Назад» и название теперь в верхней панели плеера: отдельная
+            // кнопка поверх всего висела всегда, перехватывала жест у левого
+            // края и не скрывалась вместе с остальным интерфейсом.
+            title = episode.title,
+            onBack = onExit,
         )
     }
 }
