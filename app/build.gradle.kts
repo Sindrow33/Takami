@@ -59,6 +59,10 @@ dependencies {
     implementation(project(":reader:engine"))
     implementation(project(":feature:reader"))
     implementation(project(":source:web"))
+    // Загрузчик моделей перевода. Сами веса в APK не попадают.
+    implementation(project(":translate:api"))
+    implementation(project(":translate:core"))
+    implementation(project(":core:network"))
     implementation(project(":player"))
     implementation(project(":feature:swipes"))
 

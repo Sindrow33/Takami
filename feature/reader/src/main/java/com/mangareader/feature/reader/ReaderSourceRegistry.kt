@@ -36,6 +36,18 @@ object ReaderSourceRegistry {
     @Volatile
     var diskCache: DiskLruPageCache? = null
 
+    /**
+     * Откуда берутся веса моделей перевода. Ставится хостом при старте.
+     *
+     * Пока не поставлен — перевод честно недоступен, и читалка об этом
+     * прямо говорит. Это не заглушка «на потом»: весов в проекте нет, и
+     * состояние «недоступно» — правдивое описание реальности, а не
+     * временная затычка.
+     */
+    @Volatile
+    var modelProvider: com.mangareader.translate.api.TranslationModelProvider =
+        com.mangareader.translate.api.UnavailableModelProvider()
+
     private val sources = LinkedHashMap<String, MangaPageSource>()
     private val chapterLookups = LinkedHashMap<String, suspend (String) -> ChapterInfo>()
 
