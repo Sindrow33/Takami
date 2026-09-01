@@ -62,7 +62,11 @@ object WebSources {
              * кеша движка: система вправе вычистить и то и другое, а
              * пользовательские главы в filesDir не тронет.
              */
-            downloadDir = File(context.cacheDir, "web-pages").apply { mkdirs() },
+            downloadDir = File(context.cacheDir, "web-pages").apply { mkdirs() }
+                // Каталог отдаётся под общий лимит дискового кеша:
+                // источник пишет в него сам, но не знает ни про размер,
+                // ни про вытеснение — без этого он рос бы бесконечно.
+                .also { dir -> ReaderSourceRegistry.diskCache?.adopt(dir) },
             chapterUrlOf = chapterUrlOf,
             chapterIdsOf = chapterIdsOf,
             /*

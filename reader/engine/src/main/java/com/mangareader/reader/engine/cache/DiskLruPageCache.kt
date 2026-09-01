@@ -26,6 +26,41 @@ class DiskLruPageCache(
     private val directory: File,
     private var maxSizeBytes: Long = DEFAULT_MAX_SIZE_BYTES,
 ) {
+
+    /**
+     * Каталоги, которые кеш не наполняет, но обязан учитывать и
+     * вытеснять.
+     *
+     * Источник страниц сохраняет скачанные файлы сам — ему нужен путь
+     * на диске, а не байты в памяти. Если оставить такой каталог без
+     * присмотра, он растёт бесконечно: у источника нет ни лимита, ни
+     * вытеснения, а на длинной манге это десятки гигабайт. И наоборот,
+     * копировать те же байты в свой каталог значит хранить всё дважды.
+     *
+     * Поэтому владение местом одно: файлы остаются там, где их создал
+     * источник, а лимит и LRU-вытеснение общие.
+     */
+    private val adoptedDirs = java.util.concurrent.CopyOnWriteArrayList<File>()
+
+    /** Берёт чужой каталог со скачанными страницами под общий лимит. */
+    fun adopt(directory: File) {
+        directory.mkdirs()
+        if (adoptedDirs.none { it.absolutePath == directory.absolutePath }) {
+            adoptedDirs.add(directory)
+        }
+    }
+
+    /** Лежит ли файл в каталоге, за который кеш уже отвечает. */
+    fun isManaged(file: File): Boolean {
+        val path = file.absolutePath
+        if (path.startsWith(directory.absolutePath)) return true
+        return adoptedDirs.any { path.startsWith(it.absolutePath) }
+    }
+
+    private fun managedFiles(): List<File> =
+        (listOf(directory) + adoptedDirs).flatMap { dir ->
+            dir.listFiles()?.filter { it.isFile }.orEmpty()
+        }
     companion object {
         const val DEFAULT_MAX_SIZE_BYTES = 512L * 1024 * 1024
 
@@ -118,15 +153,23 @@ class DiskLruPageCache(
     suspend fun get(page: PageRef): File? = get(page.uri, page.headers)
 
     /** Сколько байт сейчас занято — для настроек и диагностики. */
-    fun sizeBytes(): Long = directory.listFiles()?.sumOf { it.length() } ?: 0L
+    fun sizeBytes(): Long = managedFiles().sumOf { it.length() }
 
     suspend fun clear() = mutex.withLock {
-        directory.listFiles()?.forEach { it.delete() }
+        managedFiles().forEach { it.delete() }
         Unit
     }
 
+    /**
+     * Приводит общий объём под лимит. Зовётся после того, как источник
+     * сам записал страницы в поднадзорный каталог: кеш о таких записях
+     * не знает, и без явного вызова лимит не соблюдался бы.
+     */
+    suspend fun enforceLimit() = mutex.withLock { evictIfNeeded() }
+
     private fun evictIfNeeded() {
-        val files = directory.listFiles() ?: return
+        val files = managedFiles()
+        if (files.isEmpty()) return
         var totalSize = files.sumOf { it.length() }
         if (totalSize <= maxSizeBytes) return
         val sortedByOldest = files.sortedBy { it.lastModified() }
