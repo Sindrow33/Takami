@@ -112,6 +112,43 @@ class EnhancerController(
         if (!EnhancerAvailability.isAvailable(episodeUrl)) null
         else MediaExtractorAudioSource(context, Uri.parse(episodeUrl))
 
+    /**
+     * Внешние субтитры рядом с файлом, готовые к подаче в
+     * [PlayerEngine.addSubtitleTrack]. Media3 не видит сайдкар сам: `.srt`
+     * рядом с видео — это отдельный файл, а не дорожка контейнера, поэтому
+     * без явного добавления он не появлялся в списке субтитров вообще.
+     */
+    suspend fun sidecarSubtitleUri(episodeUrl: String, episodeFileName: String): SidecarSubtitle? =
+        withContext(Dispatchers.IO) {
+            val candidates = SubtitleParser.sidecarNames(episodeFileName)
+            if (episodeUrl.startsWith("content://")) {
+                val doc = DocumentFile.fromSingleUri(context, Uri.parse(episodeUrl))
+                val parent = doc?.parentFile ?: return@withContext null
+                val match = candidates.firstNotNullOfOrNull { name ->
+                    parent.findFile(name)?.takeIf { it.isFile }
+                } ?: return@withContext null
+                SidecarSubtitle(match.uri.toString(), mimeTypeFor(match.name.orEmpty()))
+            } else {
+                val path = if (episodeUrl.startsWith("file:")) {
+                    Uri.parse(episodeUrl).path
+                } else {
+                    episodeUrl
+                }
+                val dir = path?.let { File(it).parentFile } ?: return@withContext null
+                val match = candidates.map { File(dir, it) }.firstOrNull { it.isFile }
+                    ?: return@withContext null
+                SidecarSubtitle(Uri.fromFile(match).toString(), mimeTypeFor(match.name))
+            }
+        }
+
+    data class SidecarSubtitle(val uri: String, val mimeType: String)
+
+    private fun mimeTypeFor(fileName: String): String =
+        when (fileName.substringAfterLast('.', "").lowercase()) {
+            "srt" -> "application/x-subrip"
+            else -> "text/vtt"
+        }
+
     /** Текст для интерфейса: почему ИИ-субтитров пока нет. */
     fun asrStatus(): String =
         "ИИ-субтитры: звуковой пайплайн готов, не хватает модели распознавания — " +

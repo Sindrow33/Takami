@@ -50,6 +50,7 @@ import androidx.media3.ui.PlayerView
 import dev.anime.player.core.Media3Engine
 import dev.anime.player.skip.SkipSegment
 import dev.anime.player.skip.activeSegmentAt
+import dev.anime.player.track.TrackKind
 import kotlinx.coroutines.delay
 
 /**
@@ -76,6 +77,9 @@ fun PlayerScreen(
     /** Короткое сообщение поверх видео (результат включения озвучки, причина отказа). */
     notice: String? = null,
     onNoticeDismiss: () -> Unit = {},
+    /** Подпись кнопки перехода к следующей серии; null — кнопки нет. */
+    nextEpisodeLabel: String? = null,
+    onNextEpisode: (() -> Unit)? = null,
 ) {
     val state by engine.state.collectAsState()
     val context = LocalContext.current
@@ -93,6 +97,16 @@ fun PlayerScreen(
     var scrubPreviewMs by remember { mutableStateOf<Long?>(null) }
 
     // Оверлеи яркости и громкости.
+    var tracksVisible by remember { mutableStateOf(false) }
+    var tracks by remember { mutableStateOf(engine.availableTracks()) }
+
+    // Список дорожек готов не сразу после load(), а после разбора контейнера —
+    // поэтому не читаем его один раз, а слушаем изменения.
+    DisposableEffect(engine) {
+        engine.onTracksChanged { tracks = it }
+        onDispose { }
+    }
+
     var brightness by remember { mutableFloatStateOf(currentBrightness(context)) }
     var volume by remember { mutableFloatStateOf(currentVolumeFraction(context)) }
     var overlay by remember { mutableStateOf<Overlay?>(null) }
@@ -296,6 +310,16 @@ fun PlayerScreen(
             )
         }
 
+        if (nextEpisodeLabel != null && onNextEpisode != null) {
+            SkipButton(
+                label = nextEpisodeLabel,
+                onClick = onNextEpisode,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 24.dp, bottom = 96.dp),
+            )
+        }
+
         if (notice != null) {
             Notice(
                 text = notice,
@@ -312,6 +336,11 @@ fun PlayerScreen(
                 dubbingEnabled = dubbingEnabled,
                 dubbingLoading = dubbingLoading,
                 onToggleDubbing = onToggleDubbing,
+                onTracks = if (hasTrackChoice(tracks)) {
+                    { tracksVisible = true }
+                } else {
+                    null
+                },
                 onSpeed = {
                     speed = PlayerGestures.nextSpeed(speed)
                     engine.setSpeed(speed)
@@ -338,6 +367,18 @@ fun PlayerScreen(
                     )
                 },
                 modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+
+        if (tracksVisible) {
+            TrackSheet(
+                tracks = tracks,
+                onSelect = { engine.selectTrack(it); tracks = engine.availableTracks() },
+                onDisableSubtitles = {
+                    engine.disableTracks(TrackKind.Subtitle)
+                    tracks = engine.availableTracks()
+                },
+                onDismiss = { tracksVisible = false },
             )
         }
     }
@@ -436,6 +477,7 @@ private fun TopBar(
     dubbingEnabled: Boolean = false,
     dubbingLoading: Boolean = false,
     onToggleDubbing: (() -> Unit)? = null,
+    onTracks: (() -> Unit)? = null,
 ) {
     Row(
         modifier
@@ -456,6 +498,10 @@ private fun TopBar(
             maxLines = 1,
             modifier = Modifier.weight(1f),
         )
+        if (onTracks != null) {
+            PillButton("CC", onTracks)
+            Spacer(Modifier.width(8.dp))
+        }
         if (onToggleDubbing != null) {
             PillButton(
                 label = if (dubbingLoading) "…" else "ИИ",
