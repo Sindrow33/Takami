@@ -19,10 +19,21 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Unit tests
+      - name: Autoheal unit tests
+        run: gradle :autoheal:test --no-daemon --stacktrace
+      - name: App unit tests
         run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
       - name: Build Takami APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            autoheal/build/reports/tests/test
+            app/build/reports/tests/**
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: takami-app-debug

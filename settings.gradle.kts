@@ -5,4 +5,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "anime-player"
-include(":player", ":demo", ":app")
+include(":player", ":demo", ":app", ":autoheal")

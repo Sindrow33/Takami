@@ -19,7 +19,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import core.engine.ParserStats
 import dev.takami.app.data.TakamiPrefs
+import dev.takami.app.parser.ParserState
 import dev.takami.app.home.HomeScreen
 import dev.takami.app.onboarding.OnboardingFlow
 import dev.takami.app.ui.components.ModulePlaceholder
@@ -34,16 +36,17 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val prefs = TakamiPrefs(this)
+        val parser = ParserState(this)
         setContent {
             TakamiTheme {
-                TakamiApp(prefs)
+                TakamiApp(prefs, parser)
             }
         }
     }
 }
 
 @Composable
-fun TakamiApp(prefs: TakamiPrefs) {
+fun TakamiApp(prefs: TakamiPrefs, parser: ParserState) {
     var onboarded by remember { mutableStateOf(prefs.onboarded) }
 
     Box(Modifier.fillMaxSize().background(Aurora.Surface)) {
@@ -53,15 +56,21 @@ fun TakamiApp(prefs: TakamiPrefs) {
                 onboarded = true
             }
         } else {
-            MainShell()
+            MainShell(parser)
         }
     }
 }
 
 @Composable
-private fun MainShell() {
+private fun MainShell(parser: ParserState) {
     var tab by remember { mutableStateOf(Tab.Home) }
     var fabLoading by remember { mutableStateOf(false) }
+
+    // Сводка автопарсера читается с диска — обновляем при возврате на главную.
+    var parserStats by remember { mutableStateOf(ParserStats.EMPTY) }
+    LaunchedEffect(tab) {
+        if (tab == Tab.Home) parserStats = parser.stats()
+    }
 
     LaunchedEffect(fabLoading) {
         if (fabLoading) {
@@ -83,7 +92,7 @@ private fun MainShell() {
             label = "screen",
         ) { current ->
             when (current) {
-                Tab.Home -> HomeScreen()
+                Tab.Home -> HomeScreen(parserStats)
                 Tab.Library -> ModulePlaceholder(
                     "Библиотека", "manga-reader",
                     "Каталог и читалка приезжают из модульной ветки. Здесь останется вход в библиотеку и общий прогресс.",

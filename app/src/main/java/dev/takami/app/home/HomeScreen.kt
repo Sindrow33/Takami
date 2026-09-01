@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import core.engine.ParserStats
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,7 +27,7 @@ import dev.takami.app.ui.theme.Aurora
 import java.util.Calendar
 
 @Composable
-fun HomeScreen(onOpenTitle: (Int) -> Unit = {}) {
+fun HomeScreen(parserStats: ParserStats = ParserStats.EMPTY, onOpenTitle: (Int) -> Unit = {}) {
     Column(
         Modifier
             .fillMaxSize()
@@ -34,7 +35,7 @@ fun HomeScreen(onOpenTitle: (Int) -> Unit = {}) {
             .verticalScroll(rememberScrollState())
             .padding(bottom = 96.dp)
     ) {
-        TopBar()
+        TopBar(parserStats)
         Spacer(Modifier.height(16.dp))
         HeroContinue(MockDb.hero, onOpenTitle)
         Spacer(Modifier.height(20.dp))
@@ -56,7 +57,7 @@ internal fun greetingFor(hour: Int): String = when {
 }
 
 @Composable
-private fun TopBar() {
+private fun TopBar(parserStats: ParserStats) {
     val cal = Calendar.getInstance()
     val hour = cal.get(Calendar.HOUR_OF_DAY)
     val weekdays = listOf("вс", "пн", "вт", "ср", "чт", "пт", "сб")
@@ -75,7 +76,7 @@ private fun TopBar() {
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            AiIndicator()
+            AiIndicator(parserStats)
             Icon(TakamiIcon.Search, Modifier.size(22.dp), Color.White)
             Icon(TakamiIcon.Settings, Modifier.size(22.dp), Color.White)
         }

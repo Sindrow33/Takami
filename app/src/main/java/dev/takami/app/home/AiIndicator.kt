@@ -27,26 +27,23 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import core.engine.ParserStats
 import dev.takami.app.ui.components.Icon
 import dev.takami.app.ui.components.TakamiIcon
 import dev.takami.app.ui.theme.Aurora
-import kotlinx.coroutines.delay
 
 /**
  * Индикатор автопарсера в шапке главной + bottom-sheet со статистикой.
- * Процент — пока демо-сигнал (растёт каждые 8 с), в проде приходит от парсер-движка.
+ * Данные — реальные, из модуля `:autoheal`: процент обучаемости, число
+ * источников, самопочинок, точность и аномалии считаются по накопленной
+ * истории разборов. Пока ни один источник не подключён, показывается
+ * прочерк вместо выдуманного числа.
  */
 @Composable
-fun AiIndicator() {
-    var pct by remember { mutableIntStateOf(72) }
+fun AiIndicator(stats: ParserStats) {
     var open by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(8000)
-            if (pct < 99) pct += (1..2).random()
-        }
-    }
+    val pct = stats.learningPercent
+    val hasData = stats.sourceCount > 0
 
     Row(
         Modifier
@@ -64,10 +61,13 @@ fun AiIndicator() {
             contentAlignment = Alignment.Center,
         ) { Icon(TakamiIcon.Brain, Modifier.size(13.dp), Color.White) }
         MiniChart()
-        Text("$pct%", color = Color(0xFFE4DAFF), fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            if (hasData) "$pct%" else "—",
+            color = Color(0xFFE4DAFF), fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold,
+        )
     }
 
-    if (open) AiSheet(pct) { open = false }
+    if (open) AiSheet(stats) { open = false }
 }
 
 /** Мини-график: 5 столбиков, scaleY 0.6→1, stagger 150 мс. */
@@ -103,7 +103,8 @@ private fun MiniChart() {
 private data class AiStat(val label: String, val value: String, val tone: Color)
 
 @Composable
-private fun AiSheet(pct: Int, onClose: () -> Unit) {
+private fun AiSheet(stats: ParserStats, onClose: () -> Unit) {
+    val hasData = stats.sourceCount > 0
     Box(
         Modifier
             .fillMaxSize()
@@ -136,21 +137,27 @@ private fun AiSheet(pct: Int, onClose: () -> Unit) {
 
             Spacer(Modifier.height(20.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                ProgressRing(pct)
+                ProgressRing(stats.learningPercent, hasData)
                 Text(
-                    "Модель дообучается на ваших запросах. Данные не покидают устройство — веса и кеш лежат в локальном хранилище.",
+                    if (hasData)
+                        "Движок дообучается на каждом разборе. Данные не покидают устройство — история и конфиги лежат в локальном хранилище."
+                    else
+                        "Источники ещё не подключены. Движок начнёт учиться после первых разборов.",
                     color = Aurora.OnSurfaceVariant, fontSize = 12.sp, lineHeight = 19.sp,
                 )
             }
 
             Spacer(Modifier.height(20.dp))
-            val stats = listOf(
-                AiStat("Источников", "14", Color.White),
-                AiStat("Самопочинок", "38", Aurora.Ok),
-                AiStat("Точность", "96%", Aurora.Ok),
-                AiStat("Аномалий", "2", Aurora.Warn),
+            val cells = listOf(
+                AiStat("Источников", "${stats.sourceCount}", Color.White),
+                AiStat("Самопочинок", "${stats.selfHealCount}", Aurora.Ok),
+                AiStat("Точность", if (hasData) "${stats.accuracyPercent}%" else "—", Aurora.Ok),
+                AiStat(
+                    "Аномалий", "${stats.anomalyCount}",
+                    if (stats.anomalyCount > 0) Aurora.Warn else Aurora.Ok,
+                ),
             )
-            stats.chunked(2).forEach { row ->
+            cells.chunked(2).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     row.forEach { s ->
                         Column(
@@ -178,16 +185,27 @@ private fun AiSheet(pct: Int, onClose: () -> Unit) {
                     .verticalScroll(rememberScrollState())
                     .padding(10.dp)
             ) {
-                val log = listOf(
-                    Triple("[3 мин]", "ReadManga · сменилась структура кнопок глав", Aurora.Ok),
-                    Triple("[18 мин]", "AnimeGo · селектор плеера восстановлен", Aurora.Ok),
-                    Triple("[1 ч]", "RanobeLib · таймаут, повтор через прокси", Aurora.Warn),
-                    Triple("[3 ч]", "MangaLib · новая разметка списка глав", Aurora.Ok),
-                )
-                log.forEach { (ts, msg, tone) ->
+                if (stats.log.isEmpty()) {
+                    Text(
+                        "лог пуст — разборов ещё не было",
+                        color = Aurora.OnSurfaceVariant, fontSize = 10.5.sp, fontFamily = FontFamily.Monospace,
+                    )
+                }
+                stats.log.forEach { entry ->
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(ts, color = Aurora.Acc2, fontSize = 10.5.sp, fontFamily = FontFamily.Monospace)
-                        Text(msg, color = tone, fontSize = 10.5.sp, fontFamily = FontFamily.Monospace, lineHeight = 16.sp)
+                        Text(
+                            "[${ago(entry.atMillis)}]",
+                            color = Aurora.Acc2, fontSize = 10.5.sp, fontFamily = FontFamily.Monospace,
+                        )
+                        Text(
+                            "${entry.host} · ${entry.message}",
+                            color = when (entry.tone) {
+                                ParserStats.Tone.OK -> Aurora.Ok
+                                ParserStats.Tone.WARN -> Aurora.Warn
+                                ParserStats.Tone.ERROR -> Aurora.Error
+                            },
+                            fontSize = 10.5.sp, fontFamily = FontFamily.Monospace, lineHeight = 16.sp,
+                        )
                     }
                 }
             }
@@ -198,7 +216,7 @@ private fun AiSheet(pct: Int, onClose: () -> Unit) {
 
 /** Кольцо прогресса 92dp, stroke 8, градиент Acc2 → AccDim, round cap. */
 @Composable
-private fun ProgressRing(pct: Int) {
+private fun ProgressRing(pct: Int, hasData: Boolean = true) {
     Box(Modifier.size(92.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val sw = 8.dp.toPx()
@@ -217,6 +235,21 @@ private fun ProgressRing(pct: Int) {
                 style = Stroke(sw, cap = StrokeCap.Round),
             )
         }
-        Text("$pct%", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(
+            if (hasData) "$pct%" else "—",
+            color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+/** «3 мин» / «2 ч» / «4 дн» — относительное время для лога. */
+private fun ago(atMillis: Long): String {
+    if (atMillis <= 0L) return "только что"
+    val delta = (System.currentTimeMillis() - atMillis).coerceAtLeast(0L) / 1000
+    return when {
+        delta < 60 -> "только что"
+        delta < 3600 -> "${delta / 60} мин"
+        delta < 86_400 -> "${delta / 3600} ч"
+        else -> "${delta / 86_400} дн"
     }
 }
