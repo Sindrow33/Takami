@@ -22,9 +22,11 @@ import androidx.compose.ui.unit.dp
 import core.engine.ParserStats
 import dev.takami.app.data.TakamiPrefs
 import dev.takami.app.parser.ParserState
+import dev.takami.app.calendar.CalendarScreen
 import dev.takami.app.home.HomeScreen
 import dev.takami.app.library.LibraryScreen
 import dev.takami.app.onboarding.OnboardingFlow
+import dev.takami.app.settings.SettingsScreen
 import dev.takami.app.ui.components.ModulePlaceholder
 import dev.takami.app.ui.components.Tab
 import dev.takami.app.ui.components.TabBar
@@ -99,14 +101,8 @@ private fun MainShell(parser: ParserState) {
                     "Свайпы", "anime-scene-search",
                     "Подбор тайтлов свайпами и поиск по кадру — модуль поиска.",
                 )
-                Tab.Calendar -> ModulePlaceholder(
-                    "Календарь", "app-design",
-                    "Полоса дней с цветными точками по типу релиза: аниме, манга, ранобэ.",
-                )
-                Tab.Settings -> ModulePlaceholder(
-                    "Настройки", "autoheal",
-                    "Источники, прокси, автопарсер и блок поддержки разработки.",
-                )
+                Tab.Calendar -> CalendarScreen()
+                Tab.Settings -> SettingsScreen()
             }
         }
 
