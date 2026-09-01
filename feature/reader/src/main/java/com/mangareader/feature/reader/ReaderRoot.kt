@@ -8,6 +8,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,17 +20,28 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mangareader.reader.engine.gesture.TapZoneScheme
+import com.mangareader.reader.engine.settings.ReadingMode
 import com.mangareader.reader.ui.compose.WebtoonReaderScreen
 import com.mangareader.reader.ui.view.WebtoonFeedView
 import com.mangareader.translate.api.TranslationMode
@@ -49,6 +61,15 @@ fun ReaderRoot(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    // Экран не гаснет, пока читалка открыта — флаг снимается вместе с
+    // уходом композабла, а не только с активити: иначе он пережил бы
+    // возврат в приложение.
+    val view = LocalView.current
+    DisposableEffect(state.settings.keepScreenOn) {
+        view.keepScreenOn = state.settings.keepScreenOn
+        onDispose { view.keepScreenOn = false }
+    }
+
     Box(modifier.fillMaxSize().background(Aurora.Surface)) {
         WebtoonReaderScreen(
             items = state.items,
@@ -60,6 +81,10 @@ fun ReaderRoot(
             },
             onLayoutWidth = viewModel::onLayoutWidth,
             onTap = viewModel::toggleChrome,
+            tapZoneScheme = state.settings.tapZoneScheme,
+            isRtl = state.settings.readingMode.isRtl,
+            scrollToIndex = state.pendingScrollIndex,
+            onScrollHandled = viewModel::onScrollHandled,
         )
 
         if (state.loading && state.items.isEmpty() && state.error == null) {
@@ -112,6 +137,19 @@ fun ReaderRoot(
             ReaderBottomBar(
                 mode = state.translationMode,
                 onModeChange = viewModel::setTranslationMode,
+                page = state.currentPage,
+                total = state.totalPagesInChapter,
+                isRtl = state.settings.readingMode.isRtl,
+                onSeek = viewModel::seekToPage,
+                onOpenSettings = viewModel::openSettings,
+            )
+        }
+
+        if (state.settingsVisible) {
+            ReaderSettingsSheet(
+                settings = state.settings,
+                onChange = viewModel::updateSettings,
+                onClose = viewModel::closeSettings,
             )
         }
     }
@@ -143,23 +181,219 @@ private fun ReaderTopBar(chapterNumber: Float?, page: Int, total: Int) {
 }
 
 @Composable
-private fun ReaderBottomBar(mode: TranslationMode, onModeChange: (TranslationMode) -> Unit) {
-    Row(
+private fun ReaderBottomBar(
+    mode: TranslationMode,
+    onModeChange: (TranslationMode) -> Unit,
+    page: Int,
+    total: Int,
+    isRtl: Boolean,
+    onSeek: (Int) -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    Column(
         Modifier
             .fillMaxWidth()
             .background(Aurora.ScLowest.copy(alpha = .92f))
             .navigationBarsPadding()
             .padding(horizontal = 20.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        TranslationMode.entries.forEach { entry ->
-            ModeChip(
-                label = entry.label(),
-                selected = entry == mode,
-                onClick = { onModeChange(entry) },
+        if (total > 1) {
+            PageSlider(page = page, total = total, isRtl = isRtl, onSeek = onSeek)
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TranslationMode.entries.forEach { entry ->
+                    ModeChip(
+                        label = entry.label(),
+                        selected = entry == mode,
+                        onClick = { onModeChange(entry) },
+                    )
+                }
+            }
+            Text(
+                "Настройки",
+                color = Aurora.Acc2,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(Aurora.RadiusFull))
+                    .clickable(onClick = onOpenSettings)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
             )
         }
+    }
+}
+
+/**
+ * Слайдер страниц главы. В RTL-режиме зеркалится: ручка обязана ехать
+ * туда же, куда листает тап, иначе «вперёд» означает разные стороны на
+ * одном экране.
+ */
+@Composable
+private fun PageSlider(page: Int, total: Int, isRtl: Boolean, onSeek: (Int) -> Unit) {
+    // Пока пользователь тянет ручку, позиция берётся из жеста, а не из
+    // состояния: иначе поток событий скролла дёргал бы ручку из-под пальца.
+    var dragValue by remember { mutableStateOf<Float?>(null) }
+    val shown = dragValue ?: page.toFloat()
+    val last = (total - 1).coerceAtLeast(1)
+
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("${page + 1}", color = Aurora.OnSurfaceVariant, fontSize = 11.sp)
+        Slider(
+            value = if (isRtl) last - shown else shown,
+            valueRange = 0f..last.toFloat(),
+            steps = (total - 2).coerceAtLeast(0),
+            onValueChange = { raw ->
+                dragValue = if (isRtl) last - raw else raw
+            },
+            onValueChangeFinished = {
+                dragValue?.let { onSeek(it.toInt()) }
+                dragValue = null
+            },
+            colors = SliderDefaults.colors(
+                thumbColor = Aurora.Acc,
+                activeTrackColor = Aurora.Acc,
+                inactiveTrackColor = Aurora.Brd,
+            ),
+            modifier = Modifier.weight(1f),
+        )
+        Text("$total", color = Aurora.OnSurfaceVariant, fontSize = 11.sp)
+    }
+}
+
+/**
+ * Настройки тайтла (§5.1). Здесь только то, что меняет поведение чтения;
+ * выбор движка перевода и языка живёт в настройках тайтла, а не тут.
+ */
+@Composable
+private fun ReaderSettingsSheet(
+    settings: com.mangareader.reader.engine.settings.ReaderSettings,
+    onChange: ((com.mangareader.reader.engine.settings.ReaderSettings) -> com.mangareader.reader.engine.settings.ReaderSettings) -> Unit,
+    onClose: () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Aurora.ScLowest.copy(alpha = .72f))
+            // Клик по подложке закрывает; indication убран, чтобы не
+            // было ripple на весь экран.
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClose,
+            ),
+    ) {
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = Aurora.RadiusL, topEnd = Aurora.RadiusL))
+                .background(Aurora.SurfaceContainer)
+                // Перехватываем клики, чтобы тап по самому листу не
+                // закрывал его через подложку.
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {},
+                )
+                .navigationBarsPadding()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text("Настройки чтения", color = Aurora.OnSurface, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+
+            SettingGroup("Режим чтения") {
+                ReadingMode.entries.forEach { entry ->
+                    ModeChip(
+                        label = entry.label(),
+                        selected = entry == settings.readingMode,
+                        onClick = { onChange { it.copy(readingMode = entry) } },
+                    )
+                }
+            }
+
+            SettingGroup("Зоны нажатия") {
+                TapZoneScheme.entries.forEach { entry ->
+                    ModeChip(
+                        label = entry.label(),
+                        selected = entry == settings.tapZoneScheme,
+                        onClick = { onChange { it.copy(tapZoneScheme = entry) } },
+                    )
+                }
+            }
+
+            SettingToggle(
+                title = "Не гасить экран",
+                subtitle = "Пока читалка открыта",
+                checked = settings.keepScreenOn,
+                onChange = { value -> onChange { it.copy(keepScreenOn = value) } },
+            )
+            SettingToggle(
+                title = "Обрезать поля",
+                subtitle = "Убирает белые края сканов",
+                checked = settings.cropBordersEnabled,
+                onChange = { value -> onChange { it.copy(cropBordersEnabled = value) } },
+            )
+            SettingToggle(
+                title = "Разворот на две страницы",
+                subtitle = if (settings.readingMode.isPaged) {
+                    "В альбомной ориентации"
+                } else {
+                    "Доступно только в постраничных режимах"
+                },
+                checked = settings.effectiveDoubleSpread,
+                enabled = settings.readingMode.isPaged,
+                onChange = { value -> onChange { it.copy(tabletDoubleSpread = value) } },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingGroup(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, color = Aurora.OnSurfaceVariant, fontSize = 12.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+    }
+}
+
+@Composable
+private fun SettingToggle(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                color = if (enabled) Aurora.OnSurface else Aurora.OnSurfaceVariant,
+                fontSize = 14.sp,
+            )
+            Text(subtitle, color = Aurora.OnSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            enabled = enabled,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Aurora.OnPrimary,
+                checkedTrackColor = Aurora.Acc,
+                uncheckedTrackColor = Aurora.Sub,
+                uncheckedBorderColor = Aurora.Brd,
+            ),
+        )
     }
 }
 
@@ -179,6 +413,20 @@ private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
             fontWeight = FontWeight.Medium,
         )
     }
+}
+
+private fun ReadingMode.label(): String = when (this) {
+    ReadingMode.WEBTOON -> "Лента"
+    ReadingMode.PAGED_RTL -> "Справа налево"
+    ReadingMode.PAGED_LTR -> "Слева направо"
+}
+
+private fun TapZoneScheme.label(): String = when (this) {
+    TapZoneScheme.L_SHAPE -> "Г-образные"
+    TapZoneScheme.EDGES -> "По краям"
+    TapZoneScheme.RIGHT_ONLY -> "Справа"
+    TapZoneScheme.LEFT_ONLY -> "Слева"
+    TapZoneScheme.DISABLED -> "Выключены"
 }
 
 private fun TranslationMode.label(): String = when (this) {

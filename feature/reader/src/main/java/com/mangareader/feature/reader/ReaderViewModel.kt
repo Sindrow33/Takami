@@ -15,6 +15,7 @@ import com.mangareader.reader.engine.feed.FeedController
 import com.mangareader.reader.engine.feed.FeedEvent
 import com.mangareader.reader.engine.layout.FeedItem
 import com.mangareader.reader.engine.layout.PageState
+import com.mangareader.reader.engine.settings.ReaderSettings
 import com.mangareader.translate.api.TranslationMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,9 +42,25 @@ data class ReaderUiState(
     val totalPagesInChapter: Int = 0,
     val translationMode: TranslationMode = TranslationMode.ORIGINAL,
     val chromeVisible: Boolean = false,
+    val settingsVisible: Boolean = false,
+    val settings: ReaderSettings = ReaderSettings.DEFAULT,
     val loading: Boolean = true,
     val error: String? = null,
-)
+    /** Запрошенный слайдером переход на элемент ленты; одноразовый. */
+    val pendingScrollIndex: Int? = null,
+) {
+    /**
+     * Индексы элементов текущей главы в ленте — область, по которой
+     * ездит слайдер. Слайдер намеренно ограничен ОДНОЙ главой, хотя
+     * лента непрерывна: иначе его цена деления зависела бы от того,
+     * сколько глав успело догрузиться, и позиция ручки прыгала бы сама
+     * по себе при догрузке.
+     */
+    fun chapterPageIndices(): List<Int> =
+        items.indices.filter { i ->
+            (items[i] as? FeedItem.Page)?.chapterId == currentChapterId
+        }
+}
 
 class ReaderViewModel(
     private val source: MangaPageSource,
@@ -130,7 +147,44 @@ class ReaderViewModel(
     }
 
     fun toggleChrome() {
-        _state.value = _state.value.copy(chromeVisible = !_state.value.chromeVisible)
+        val visible = !_state.value.chromeVisible
+        // Закрытие хрома закрывает и настройки: иначе шит остаётся
+        // висеть над лентой без панели, из которой он открыт.
+        _state.value = _state.value.copy(
+            chromeVisible = visible,
+            settingsVisible = if (visible) _state.value.settingsVisible else false,
+        )
+    }
+
+    fun openSettings() {
+        _state.value = _state.value.copy(settingsVisible = true)
+    }
+
+    fun closeSettings() {
+        _state.value = _state.value.copy(settingsVisible = false)
+    }
+
+    fun updateSettings(transform: (ReaderSettings) -> ReaderSettings) {
+        _state.value = _state.value.copy(settings = transform(_state.value.settings))
+    }
+
+    /**
+     * Переход на страницу [pageIndex] текущей главы — вызывается
+     * слайдером. Индекс страницы переводится в индекс элемента ленты:
+     * лента сквозная и содержит соседние главы, поэтому номер страницы
+     * и позиция в списке — разные вещи.
+     */
+    fun seekToPage(pageIndex: Int) {
+        val indices = _state.value.chapterPageIndices()
+        if (indices.isEmpty()) return
+        val target = indices.getOrNull(pageIndex.coerceIn(0, indices.lastIndex)) ?: return
+        _state.value = _state.value.copy(pendingScrollIndex = target, currentPage = pageIndex)
+    }
+
+    fun onScrollHandled() {
+        if (_state.value.pendingScrollIndex != null) {
+            _state.value = _state.value.copy(pendingScrollIndex = null)
+        }
     }
 
     fun setTranslationMode(mode: TranslationMode) {
