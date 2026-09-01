@@ -24,7 +24,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import core.engine.ParserStats
 import dev.takami.app.data.TakamiPrefs
-import dev.takami.app.parser.AutoParseScreen
 import dev.takami.app.parser.ParserState
 import dev.takami.app.calendar.CalendarScreen
 import dev.takami.app.home.HomeScreen
@@ -79,9 +78,6 @@ private fun MainShell(parser: ParserState) {
      * только сообщает, что идёт воспроизведение.
      */
     var immersive by remember { mutableStateOf(false) }
-    // Экран разбора сайта открывается поверх оболочки: он нужен и с
-    // главной, и из настроек, а таба под него нет.
-    var parsing by remember { mutableStateOf(false) }
     val context = LocalContext.current
     LaunchedEffect(immersive) {
         val activity = context as? android.app.Activity ?: return@LaunchedEffect
@@ -110,13 +106,6 @@ private fun MainShell(parser: ParserState) {
             fabLoading = false
             tab = Tab.Swipes
         }
-    }
-
-    if (parsing) {
-        // Экран разбора сайта открывается поверх оболочки: он нужен и с
-        // главной, и из настроек, а отдельного таба под него нет.
-        AutoParseScreen(onClose = { parsing = false })
-        return
     }
 
     Box(Modifier.fillMaxSize()) {

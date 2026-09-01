@@ -49,6 +49,8 @@ sealed class HttpError(message: String, cause: Throwable? = null) : IOException(
     class BadStatus(val code: Int, val bodyPreview: String) : HttpError("HTTP $code")
     class RateLimited(val retryAfterMillis: Long?) : HttpError("слишком много запросов")
     class Cancelled : HttpError("запрос отменён")
+    /** Ответ пришёл, но прочитать его как текст нельзя. */
+    class Malformed(detail: String) : HttpError(detail)
     class Unknown(cause: Throwable?) : HttpError("сетевая ошибка: ${cause?.message}", cause)
 
     /** Стоит ли повторять. 403/404 повторять бессмысленно, таймаут — стоит. */
@@ -253,18 +255,32 @@ class OkHttpClientAdapter(
 
     /* --- заголовки --------------------------------------------------- */
 
+    /*
+     * Accept-Encoding здесь НЕ ставится намеренно.
+     *
+     * OkHttp сам добавляет `gzip` и сам распаковывает ответ — но ровно
+     * до тех пор, пока заголовок ставит он. Стоит прописать его руками,
+     * и клиент считает, что сжатием управляет вызывающий: тело
+     * приезжает сжатым и отдаётся как есть. Дальше оно декодируется в
+     * строку по charset, и вместо разметки получается мусор длиной с
+     * архив — у AnimeVost 7.7 тысячи «символов» вместо 28 тысяч.
+     *
+     * Снаружи это выглядело как «сайт отдаёт пустую страницу»: разбор
+     * не находил ни карточек, ни глав, а диагностика показывала
+     * правдоподобный, но маленький размер ответа и списывала всё на
+     * скрипты. Ошибка била по КАЖДОМУ сайту с gzip, то есть почти по
+     * всем.
+     */
     override fun defaultHeaders(): Map<String, String> = mapOf(
         "User-Agent" to userAgent,
         "Accept" to "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
         "Accept-Language" to acceptLanguage,
-        "Accept-Encoding" to "gzip",
     )
 
     override fun browserHeaders(referer: String?, origin: String?): Map<String, String> = buildMap {
         put("User-Agent", userAgent)
         put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
         put("Accept-Language", acceptLanguage)
-        put("Accept-Encoding", "gzip")
         put("Upgrade-Insecure-Requests", "1")
         put("Sec-Fetch-Dest", "document")
         put("Sec-Fetch-Mode", "navigate")
@@ -456,6 +472,23 @@ class OkHttpClientAdapter(
         val buffer = source.buffer()
         val truncated = buffer.size > maxBodyBytes
         val bytes = buffer.snapshot(minOf(buffer.size, maxBodyBytes).toInt())
+
+        /*
+         * Нераспакованное тело нельзя молча отдать как текст.
+         *
+         * Если сжатие не сняли, первые два байта — сигнатура gzip
+         * (0x1F 0x8B), а декодирование по charset превращает архив в
+         * строку мусора. Разбор такой строки всегда даёт ноль
+         * элементов, и виноватым выглядит сайт. Лучше громкая ошибка
+         * в одном месте, чем тихий пустой результат во всех.
+         */
+        if (bytes.size >= 2 && bytes[0] == 0x1F.toByte() && bytes[1] == 0x8B.toByte()) {
+            throw HttpError.Malformed(
+                "тело пришло сжатым и не было распаковано: " +
+                    "Content-Encoding=${r.header("Content-Encoding")}",
+            )
+        }
+
         val charset = body.contentType()?.charset() ?: Charsets.UTF_8
         return bytes.string(charset) to truncated
     }

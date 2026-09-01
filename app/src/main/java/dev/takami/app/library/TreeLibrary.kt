@@ -243,7 +243,28 @@ private class TreePageSource(
              */
             val dir = File(cacheDir, "cbz/" + PageCacheKey.of(archive.uri.toString()))
             val marker = File(dir, ".done")
-            if (!marker.isFile) {
+
+            /*
+             * Отметка хранит ЧИСЛО распакованных страниц и сверяется с
+             * тем, что лежит на диске.
+             *
+             * Пустая отметка чинит только будущие распаковки, но не
+             * лечит уже испорченный кеш. Сборки, где распаковка падала,
+             * успевали оставить одну страницу и отметку рядом с ней:
+             * после обновления приложения короткое замыкание по
+             * `marker.isFile` по-прежнему отдавало эту единственную
+             * страницу, и глава навсегда оставалась «1 / 1» с пустым
+             * экраном. Сбросить это можно было только переустановкой —
+             * ровно то, что видно на устройстве сейчас.
+             *
+             * Сверка количества делает порчу самоизлечимой: расходится
+             * — распаковываем заново.
+             */
+            val declared = marker.takeIf { it.isFile }
+                ?.let { runCatching { it.readText().trim().toInt() }.getOrNull() }
+            val onDisk = dir.listFiles()?.count { it.isFile && LibraryNames.isImage(it.name) } ?: 0
+
+            if (declared == null || declared != onDisk || onDisk == 0) {
                 /*
                  * Незавершённая распаковка не должна выглядеть готовой:
                  * маркер ставится только после успеха, а остатки
@@ -276,7 +297,7 @@ private class TreePageSource(
                     dir.deleteRecursively()
                     return@withContext emptyList()
                 }
-                marker.writeBytes(ByteArray(0))
+                marker.writeText(extracted.toString())
                 // Распакованное — это место на диске, за которое кеш
                 // отвечает; без этого каталог рос бы без предела.
                 runCatching { ReaderSourceRegistry.diskCache?.enforceLimit() }

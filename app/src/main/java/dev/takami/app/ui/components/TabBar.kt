@@ -35,6 +35,9 @@ enum class Tab { Home, Library, Swipes, Calendar, Settings }
 /** Потолок отступа под системную навигацию: жестовый индикатор. */
 private val MAX_NAV_INSET = 12.dp
 
+/** Высота строки иконок; она же задаёт высоту всей панели. */
+private val TAB_ROW_HEIGHT = 56.dp
+
 /**
  * Нижний таббар: 5 позиций, центральная — FAB 56dp со смещением -26dp.
  * При загрузке FAB пульсирует и показывает спиннер (1200 мс), потом открывает «Свайпы».
@@ -70,16 +73,30 @@ fun TabBar(
         .calculateBottomPadding()
     val bottomInset = minOf(systemInset, MAX_NAV_INSET)
 
+    /*
+     * Высота задаётся ЯВНО, иначе её задаёт FAB.
+     *
+     * Box меряется по самому высокому ребёнку, а `offset` на измерение
+     * не влияет — кнопка 96dp, поднятая на -26dp, всё равно требовала
+     * 96dp высоты. Строка иконок 56dp вставала в верх этой коробки, а
+     * под ней оставалось около сорока пикселей пустого фона: именно
+     * его видно как «панель висит высоко». Первая правка меняла отступ
+     * под навигацию и потому помогла лишь отчасти — причина была не в
+     * нём.
+     *
+     * Кнопка выходит за границы и рисуется поверх: обрезки здесь нет.
+     */
     Box(
         Modifier
             .fillMaxWidth()
+            .height(TAB_ROW_HEIGHT + bottomInset)
             .background(Aurora.SurfaceContainer)
             .padding(bottom = bottomInset),
     ) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                .height(TAB_ROW_HEIGHT)
                 .border(1.dp, Aurora.Brd)
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
