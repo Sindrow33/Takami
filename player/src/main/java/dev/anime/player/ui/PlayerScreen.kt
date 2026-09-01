@@ -29,6 +29,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import dev.anime.player.core.Media3Engine
 import dev.anime.player.skip.SkipSegment
+import dev.anime.player.skip.activeSegmentAt
 import kotlinx.coroutines.delay
 
 @Composable
@@ -51,7 +52,7 @@ fun PlayerScreen(
     }
 
     val active = remember(segments, state.positionMs) {
-        segments.firstOrNull { it.contains(state.positionMs) }
+        activeSegmentAt(segments, state.positionMs)
     }
 
     LaunchedEffect(active, autoSkip) {

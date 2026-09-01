@@ -31,11 +31,16 @@ class AniSkipProviderTest {
 
         val segments = provider.segments(malId = 32281, episode = 1, durationMs = 1_440_000L)
 
+        // Порядок — по времени начала на таймлайне: рекап (0:00) идёт раньше
+        // опенинга (0:12.5). Ожидание «сначала OP» было ошибкой самого теста:
+        // сортировка в провайдере по startMs, и она правильная — сегменты
+        // потребляются как таймлайн, а не как список по важности.
         assertEquals(3, segments.size)
-        assertEquals(SkipType.OP, segments[0].type)
-        assertEquals(12_500L, segments[0].startMs)
-        assertEquals(102_000L, segments[0].endMs)
-        assertEquals(SkipType.RECAP, segments[1].type)
+        assertEquals(SkipType.RECAP, segments[0].type)
+        assertEquals(0L, segments[0].startMs)
+        assertEquals(SkipType.OP, segments[1].type)
+        assertEquals(12_500L, segments[1].startMs)
+        assertEquals(102_000L, segments[1].endMs)
         assertEquals(SkipType.ED, segments[2].type)
         assertTrue(requestedUrl!!.contains("/32281/1"))
         assertTrue(requestedUrl!!.contains("episodeLength=1440.0"))

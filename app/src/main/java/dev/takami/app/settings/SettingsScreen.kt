@@ -1,7 +1,5 @@
 package dev.takami.app.settings
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mangareader.feature.reader.ReaderSourceRegistry
 import core.engine.ParserStats
-import dev.takami.app.library.LibraryFolder
 import dev.takami.app.parser.ParserState
 import dev.takami.app.ui.theme.Aurora
 import kotlinx.coroutines.Dispatchers
@@ -40,19 +38,6 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SettingsScreen(prefs: AppSettingsStore = AppSettingsStore(LocalContext.current)) {
     val context = LocalContext.current
-    val folder = remember { LibraryFolder(context) }
-    var folderRefresh by remember { mutableStateOf(0) }
-    val folderName = remember(folderRefresh) { folder.displayName().takeIf { folder.isUsable() } }
-
-    val pick = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val uri = result.data?.data ?: return@rememberLauncherForActivityResult
-        folder.remember(uri)
-        // Импорт запускает библиотека при открытии вкладки — здесь
-        // достаточно запомнить папку и обновить подпись.
-        folderRefresh++
-    }
     var stats by remember { mutableStateOf(ParserStats.EMPTY) }
     var proxyEnabled by remember { mutableStateOf(prefs.proxyEnabled) }
     var autoHealEnabled by remember { mutableStateOf(prefs.autoHealEnabled) }
@@ -60,6 +45,16 @@ fun SettingsScreen(prefs: AppSettingsStore = AppSettingsStore(LocalContext.curre
     var cacheBytes by remember { mutableStateOf(0L) }
     var cacheRefresh by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
+    val libraryRoot = remember { dev.takami.app.library.LibraryRoot(context) }
+    var libraryPath by remember { mutableStateOf(libraryRoot.displayPath()) }
+    val folderPicker = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            libraryRoot.select(uri)
+            libraryPath = libraryRoot.displayPath()
+        }
+    }
 
     LaunchedEffect(Unit) {
         stats = withContext(Dispatchers.IO) { ParserState(context).stats() }
@@ -103,25 +98,28 @@ fun SettingsScreen(prefs: AppSettingsStore = AppSettingsStore(LocalContext.curre
         }
 
         Section("Хранилище") {
-            InfoRow(
-                title = "Папка с локальным контентом",
-                value = folderName ?: "не выбрана",
-            )
-            Hint(
-                "Главы читаются из выбранной вами папки на телефоне или карте памяти. " +
-                    "Без неё библиотека пуста: внутренний каталог приложения пользователю недоступен.",
-            )
+            /*
+             * Папка контента — первым пунктом. По умолчанию корнем
+             * остаётся внутренний каталог приложения, куда пользователь
+             * с телефона положить ничего не может, поэтому смена папки
+             * должна быть на виду, а не только на пустом экране
+             * библиотеки.
+             */
+            InfoRow(title = "Папка с контентом", value = libraryPath)
             Text(
-                if (folderName != null) "Выбрать другую папку" else "Выбрать папку",
+                "Выбрать папку",
                 color = Aurora.Acc2,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier
                     .clip(RoundedCornerShape(Aurora.RadiusFull))
-                    .clickable { pick.launch(folder.pickIntent()) }
+                    .clickable { folderPicker.launch(null) }
                     .padding(vertical = 4.dp),
             )
-            Spacer(Modifier.height(14.dp))
+            Hint(
+                "Главы читаются отсюда: Название/Глава/0001.jpg или Название/Глава.cbz. " +
+                    "Сюда же будут сохраняться скачанные главы.",
+            )
             InfoRow(title = "Кеш страниц", value = formatSize(cacheBytes))
             Hint(
                 "Скачанные страницы хранятся, чтобы перечитывание не тратило трафик. " +

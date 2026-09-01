@@ -1,6 +1,7 @@
 package dev.takami.source.web
 
 import com.mangareader.core.model.MangaPageSource
+import com.mangareader.core.model.PageCacheKey
 import com.mangareader.core.model.PageLoad
 import com.mangareader.core.model.PageRef
 import core.engine.ParseEngine
@@ -145,36 +146,13 @@ class WebMangaPageSource(
         ChapterPlan.neighbour(chapterIdsOf(chapterId), chapterId, -1)
 
     /**
-     * Имя файла — от URL и заголовков, влияющих на тело ответа.
+     * Имя файла — общая на весь проект формула [PageCacheKey].
      *
-     * Не от id страницы: один URL, встреченный в двух главах, должен
-     * быть одним файлом. И не от одного URL: тот же адрес с другим
-     * `Referer` на хостингах картинок отдаёт либо страницу, либо
-     * заглушку с 403 — по одному URL они склеились бы в один файл, и
-     * заглушка осела бы вместо страницы.
+     * Своей копии здесь больше нет. Формулу обязаны считать одинаково
+     * две стороны: источник даёт файлу имя, дисковый кеш читалки по
+     * тому же имени этот файл ищет. Пока копий было две, они разошлись
+     * в мелочи (склейка заголовков и пустой случай) — и кеш не находил
+     * ни одного файла источника, хотя отвечал за их место.
      */
-    private fun fileNameFor(page: PageRef): String {
-        val keyed = page.headers
-            .filterKeys { it.lowercase() in KEYED_HEADERS }
-            // Регистр и порядок заголовков не должны плодить разные
-            // имена для одного и того же запроса.
-            .map { (name, value) -> name.lowercase() + "=" + value }
-            .sorted()
-            .joinToString("&")
-
-        val digest = java.security.MessageDigest.getInstance("SHA-1")
-            .digest((page.uri + "\n" + keyed).toByteArray())
-            .joinToString("") { "%02x".format(it) }
-        return digest
-    }
-
-    private companion object {
-        /**
-         * Закрытый список: заголовки, которые реально меняют тело.
-         * Попади сюда `User-Agent` или какой-нибудь `X-Request-Id` —
-         * имя файла менялось бы от запроса к запросу, и переиспользования
-         * не было бы вообще.
-         */
-        val KEYED_HEADERS = setOf("referer", "origin", "cookie")
-    }
+    private fun fileNameFor(page: PageRef): String = PageCacheKey.of(page)
 }

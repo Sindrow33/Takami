@@ -24,10 +24,10 @@ import dev.takami.app.data.TakamiPrefs
 import dev.takami.app.parser.ParserState
 import dev.takami.app.calendar.CalendarScreen
 import dev.takami.app.home.HomeScreen
-import dev.takami.app.library.LibraryScreen
+import dev.takami.app.library.LibraryTabs
 import dev.takami.app.onboarding.OnboardingFlow
+import dev.takami.swipes.SwipesScreen
 import dev.takami.app.settings.SettingsScreen
-import dev.takami.app.ui.components.ModulePlaceholder
 import dev.takami.app.ui.components.Tab
 import dev.takami.app.ui.components.TabBar
 import dev.takami.app.ui.theme.Aurora
@@ -96,11 +96,8 @@ private fun MainShell(parser: ParserState) {
         ) { current ->
             when (current) {
                 Tab.Home -> HomeScreen(parserStats)
-                Tab.Library -> LibraryScreen()
-                Tab.Swipes -> ModulePlaceholder(
-                    "Свайпы", "anime-scene-search",
-                    "Подбор тайтлов свайпами и поиск по кадру — модуль поиска.",
-                )
+                Tab.Library -> LibraryTabs()
+                Tab.Swipes -> SwipesScreen()
                 Tab.Calendar -> CalendarScreen()
                 Tab.Settings -> SettingsScreen()
             }

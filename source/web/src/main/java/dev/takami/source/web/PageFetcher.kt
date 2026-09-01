@@ -64,7 +64,10 @@ class HttpPageFetcher(
          * рядом с готовыми страницами попадал бы в подсчёт размера, и
          * вытеснение могло бы удалить его прямо посреди записи.
          */
-        val part = File(target.parentFile, "incomplete/" + target.name + ".part")
+        val part = File(
+            File(target.parentFile, com.mangareader.core.model.PageCacheKey.INCOMPLETE_DIR),
+            target.name + ".part",
+        )
         part.parentFile?.mkdirs()
         part.delete()
 
