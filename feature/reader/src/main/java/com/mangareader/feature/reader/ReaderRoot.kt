@@ -95,6 +95,7 @@ fun ReaderRoot(
                 onTap = viewModel::toggleChrome,
                 tapZoneScheme = state.settings.tapZoneScheme,
                 isRtl = state.settings.readingMode.isRtl,
+                doubleSpreadEnabled = state.settings.effectiveDoubleSpread,
                 scrollToIndex = state.pendingScrollIndex,
                 onScrollHandled = viewModel::onScrollHandled,
             )

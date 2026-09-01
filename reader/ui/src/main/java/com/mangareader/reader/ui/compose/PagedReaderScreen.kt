@@ -26,6 +26,7 @@ fun PagedReaderScreen(
     onTap: () -> Unit = {},
     tapZoneScheme: TapZoneScheme = TapZoneScheme.L_SHAPE,
     isRtl: Boolean = false,
+    doubleSpreadEnabled: Boolean = false,
     scrollToIndex: Int? = null,
     onScrollHandled: () -> Unit = {},
 ) {
@@ -45,6 +46,7 @@ fun PagedReaderScreen(
                 view.onTap = onTap
                 view.tapZoneScheme = tapZoneScheme
                 view.isRtl = isRtl
+                view.doubleSpreadEnabled = doubleSpreadEnabled
                 scrollToIndex?.let {
                     view.showIndex(it)
                     onScrollHandled()
