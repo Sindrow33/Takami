@@ -1,10 +1,10 @@
 package com.mangareader.reader.engine.cache
 
+import com.mangareader.core.model.PageCacheKey
 import com.mangareader.core.model.PageRef
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
-import java.security.MessageDigest
 
 /**
  * Simple size-bounded LRU cache of downloaded page files on disk (§8:
@@ -61,18 +61,36 @@ class DiskLruPageCache(
         (listOf(directory) + adoptedDirs).flatMap { dir ->
             dir.listFiles()?.filter { it.isFile }.orEmpty()
         }
+
+    /**
+     * Незавершённые загрузки. Источник пишет их в подкаталог
+     * `incomplete/` — намеренно, чтобы вытеснение не удалило временный
+     * файл посреди записи. Побочный эффект: подкаталог не попадает ни
+     * в подсчёт размера, ни в вытеснение, ни в очистку — а огрызок
+     * остаётся на диске после каждого обрыва и падения. Каталог, за
+     * которым никто не следит, растёт без предела: ровно та причина, по
+     * которой кеш вообще взял чужой каталог под надзор.
+     */
+    private fun incompleteFiles(): List<File> =
+        (listOf(directory) + adoptedDirs).flatMap { dir ->
+            File(dir, INCOMPLETE_DIR).listFiles()?.filter { it.isFile }.orEmpty()
+        }
     companion object {
         const val DEFAULT_MAX_SIZE_BYTES = 512L * 1024 * 1024
 
-        /**
-         * Заголовки, реально влияющие на тело ответа у хостингов
-         * картинок. `Referer`/`Origin` — то, без чего прилетает 403;
-         * `Cookie` — сессия, за которой может стоять другой контент.
-         */
-        private val KEYED_HEADERS = setOf("referer", "origin", "cookie")
-
         /** Сколько байт читаем для проверки сигнатуры при чтении. */
         private const val HEADER_PROBE_BYTES = 64
+
+        /** Подкаталог незавершённых загрузок источника. */
+        const val INCOMPLETE_DIR = PageCacheKey.INCOMPLETE_DIR
+
+        /**
+         * Возраст, после которого огрызок считается брошенным. Живая
+         * загрузка обновляет файл постоянно, поэтому час — заведомо
+         * больше любой честной закачки одной страницы и заведомо
+         * меньше срока, за который мусор станет заметен.
+         */
+        val STALE_INCOMPLETE_AGE_MS = 60L * 60 * 1000
     }
 
     private val mutex = Mutex()
@@ -86,27 +104,40 @@ class DiskLruPageCache(
     }
 
     /**
-     * Ключ кеша: URI плюс заголовки, влияющие на ответ.
+     * Ключ кеша — общая на весь проект формула [PageCacheKey].
      *
-     * Учитываются не все заголовки подряд — только [KEYED_HEADERS].
-     * Иначе меняющийся `User-Agent` или случайный `X-Request-Id`
-     * промахивались бы мимо кеша на каждом запросе, и он не работал бы
-     * вовсе. Имена приводятся к нижнему регистру и сортируются, чтобы
-     * порядок и регистр не порождали разные ключи для одного запроса.
+     * Своей копии здесь сознательно нет: тот же ключ считает сетевой
+     * источник, когда даёт имя скачанному файлу, и две независимые
+     * реализации одной формулы уже разъезжались.
      */
-    fun keyFor(uri: String, headers: Map<String, String> = emptyMap()): String {
-        val relevant = headers
-            .filterKeys { it.lowercase() in KEYED_HEADERS }
-            .map { (name, value) -> "${name.lowercase()}=$value" }
-            .sorted()
-        return if (relevant.isEmpty()) sha1(uri) else sha1(uri + "\n" + relevant.joinToString("\n"))
-    }
+    fun keyFor(uri: String, headers: Map<String, String> = emptyMap()): String =
+        PageCacheKey.of(uri, headers)
 
+    /** Куда кеш кладёт страницу, которую скачал не источник, а он сам. */
     fun fileFor(uri: String, headers: Map<String, String> = emptyMap()): File =
         File(directory, keyFor(uri, headers))
 
     /** Файл для страницы — заголовки берутся из самой [PageRef]. */
     fun fileFor(page: PageRef): File = fileFor(page.uri, page.headers)
+
+    /**
+     * Где страница лежит сейчас — в своём каталоге ИЛИ в поднадзорном.
+     *
+     * Искать только в своём нельзя. Сетевой источник сохраняет страницы
+     * сам, в свой каталог, и кеш взял этот каталог под общий лимит: он
+     * такие файлы считает и вытесняет. Но чтение шло по [fileFor], то
+     * есть только по собственному каталогу — значит для сетевого
+     * источника слой «диск» в цепочке память → упреждающая загрузка →
+     * диск → сеть не находил вообще ничего. Кеш отвечал за место чужих
+     * файлов и не давал за них ни одного попадания.
+     */
+    private fun locate(key: String): File? {
+        val own = File(directory, key)
+        if (own.isFile) return own
+        return adoptedDirs.asSequence()
+            .map { File(it, key) }
+            .firstOrNull { it.isFile }
+    }
 
     /**
      * Кладёт байты страницы в кеш.
@@ -133,8 +164,11 @@ class DiskLruPageCache(
     suspend fun put(page: PageRef, bytes: ByteArray): File? = put(page.uri, bytes, page.headers)
 
     suspend fun get(uri: String, headers: Map<String, String> = emptyMap()): File? = mutex.withLock {
-        val file = fileFor(uri, headers)
-        if (!file.exists() || file.length() < ImageBytes.MIN_SIZE_BYTES) return@withLock null
+        val file = locate(keyFor(uri, headers)) ?: return@withLock null
+        if (file.length() < ImageBytes.MIN_SIZE_BYTES) {
+            file.delete()
+            return@withLock null
+        }
 
         // Сигнатура перечитывается и на чтении: запись могла лечь до
         // появления этой проверки или быть повреждена обрывом записи.
@@ -152,11 +186,21 @@ class DiskLruPageCache(
 
     suspend fun get(page: PageRef): File? = get(page.uri, page.headers)
 
-    /** Сколько байт сейчас занято — для настроек и диагностики. */
-    fun sizeBytes(): Long = managedFiles().sumOf { it.length() }
+    /**
+     * Сколько байт сейчас занято — для настроек и диагностики.
+     *
+     * Огрызки входят в число: пользователь в настройках видит место,
+     * занятое приложением, а не то, что кеш считает своим удачным
+     * содержимым.
+     */
+    fun sizeBytes(): Long = (managedFiles() + incompleteFiles()).sumOf { it.length() }
 
     suspend fun clear() = mutex.withLock {
         managedFiles().forEach { it.delete() }
+        // Очистка обязана освобождать всё место, за которое кеш
+        // отвечает, иначе показанный в настройках размер и реально
+        // освобождённое место расходятся.
+        incompleteFiles().forEach { it.delete() }
         Unit
     }
 
@@ -165,12 +209,31 @@ class DiskLruPageCache(
      * сам записал страницы в поднадзорный каталог: кеш о таких записях
      * не знает, и без явного вызова лимит не соблюдался бы.
      */
-    suspend fun enforceLimit() = mutex.withLock { evictIfNeeded() }
+    suspend fun enforceLimit() = mutex.withLock {
+        sweepStaleIncomplete()
+        evictIfNeeded()
+    }
+
+    /**
+     * Удаляет брошенные огрызки. Живую закачку не трогаем — только то,
+     * что не менялось дольше [STALE_INCOMPLETE_AGE_MS]: удалить файл,
+     * в который прямо сейчас пишут, значит уронить загрузку страницы,
+     * которую пользователь ждёт.
+     */
+    private fun sweepStaleIncomplete() {
+        val deadline = System.currentTimeMillis() - STALE_INCOMPLETE_AGE_MS
+        incompleteFiles()
+            .filter { it.lastModified() < deadline }
+            .forEach { it.delete() }
+    }
 
     private fun evictIfNeeded() {
         val files = managedFiles()
         if (files.isEmpty()) return
-        var totalSize = files.sumOf { it.length() }
+        // В бюджет входят и огрызки: место они занимают настоящее, а
+        // удалять их вытеснением нельзя — в них может идти запись.
+        // Поэтому они не кандидаты на удаление, но лимит уменьшают.
+        var totalSize = files.sumOf { it.length() } + incompleteFiles().sumOf { it.length() }
         if (totalSize <= maxSizeBytes) return
         val sortedByOldest = files.sortedBy { it.lastModified() }
         for (file in sortedByOldest) {
@@ -178,10 +241,5 @@ class DiskLruPageCache(
             totalSize -= file.length()
             file.delete()
         }
-    }
-
-    private fun sha1(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-1").digest(input.toByteArray())
-        return digest.joinToString("") { "%02x".format(it) }
     }
 }

@@ -68,8 +68,9 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.13.1")
-    // Выбор папки с локальным контентом через SAF: filesDir пользователю
-    // недоступен, положить туда файлы с телефона нельзя.
+    // Доступ к папке, выбранной пользователем: filesDir пользователю
+    // недоступен, а у content-документа пути для File может не быть
+    // вовсе (SD-карта, облако, USB).
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
