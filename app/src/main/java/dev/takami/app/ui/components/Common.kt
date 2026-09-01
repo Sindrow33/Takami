@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -117,11 +118,23 @@ fun SplashLoader(modifier: Modifier = Modifier) {
             .clip(RoundedCornerShape(Aurora.RadiusFull))
             .background(Color(0x0FFFFFFF))
     ) {
+        /*
+         * Бегунок СМЕЩАЕТСЯ, а не отодвигается отступом.
+         * `padding(start = ...)` уменьшал доступную ширину вместо сдвига:
+         * при shift -> 1 отступ доходил до 120dp на дорожке шириной
+         * 120dp, и от бегунка оставалась точка, залипшая справа. Именно
+         * это и выглядело как «сломанная анимация загрузки».
+         */
         Box(
             Modifier
                 .fillMaxWidth(0.45f)
                 .height(3.dp)
-                .padding(start = (60 + shift * 60).dp.coerceAtLeast(0.dp))
+                /*
+                 * Дорожка 120dp, бегунок 45% = 54dp. Проходит от -54
+                 * (полностью за левым краем) до 120 (за правым): центр
+                 * 33, полуразмах 87. Иначе на краях бегунок «прилипает».
+                 */
+                .offset(x = (33 + shift * 87).dp)
                 .background(Brush.horizontalGradient(listOf(Color.Transparent, Aurora.Acc, Color.Transparent)))
         )
     }

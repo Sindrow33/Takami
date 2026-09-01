@@ -34,6 +34,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import dev.takami.app.R
+import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -87,17 +88,34 @@ private fun SplashScreen(onNext: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         /*
-         * Логотип приложения. Раньше здесь была временная звезда на
-         * градиенте — заглушка, которая так и уехала в сборку.
+         * Логотип приложения.
+         *
+         * Раньше он рисовался скруглённым квадратом с собственным
+         * тёмным фоном — на чёрном экране это читалось как наклейка
+         * поверх, «неестественно вставленная картинка». Теперь ассет без
+         * подложки (только арт на прозрачном), а вместо коробки под ним
+         * мягкое свечение: логотип принадлежит экрану, а не лежит на нём.
          */
-        Image(
-            painter = painterResource(R.drawable.takami_logo),
-            contentDescription = "Takami",
-            modifier = Modifier
-                .size(108.dp)
-                .scale(breath)
-                .clip(RoundedCornerShape(30.dp)),
-        )
+        Box(
+            Modifier.size(148.dp).scale(breath),
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        0f to Aurora.Acc.copy(alpha = 0.28f),
+                        0.55f to Aurora.Acc.copy(alpha = 0.10f),
+                        1f to Color.Transparent,
+                    ),
+                    radius = size.minDimension / 2f,
+                )
+            }
+            Image(
+                painter = painterResource(R.drawable.takami_logo),
+                contentDescription = "Takami",
+                modifier = Modifier.size(104.dp),
+            )
+        }
         Spacer(Modifier.height(24.dp))
         Text("Takami", color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.88).sp)
         Spacer(Modifier.height(6.dp))
@@ -436,12 +454,20 @@ private fun WelcomeScreen(onDone: () -> Unit) {
                 .rotate(girlSway),
         )
 
-        // Речевой пузырёк
+        /*
+         * Речевой пузырёк.
+         *
+         * Висел в правом верхнем углу с жёстким отступом сверху: хвостик
+         * указывал в пустоту, а сам пузырёк наезжал на голову персонажа —
+         * реплика читалась как чужая. Теперь он слева от головы, а
+         * хвостик (скруглённый угол bottomEnd) направлен вправо-вниз,
+         * то есть на говорящего.
+         */
         Column(
             Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 110.dp, end = 16.dp)
-                .widthIn(max = 200.dp)
+                .align(Alignment.TopStart)
+                .padding(top = 132.dp, start = 20.dp)
+                .widthIn(max = 190.dp)
                 .scale(1f + bubbleWiggle * 0.004f)
                 .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 4.dp, bottomStart = 20.dp))
                 .background(Brush.linearGradient(listOf(Color.White, Color(0xFFF4EBFF))))

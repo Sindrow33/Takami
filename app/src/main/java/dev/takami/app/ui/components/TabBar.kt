@@ -42,12 +42,25 @@ fun TabBar(
     onSelect: (Tab) -> Unit,
     onFab: () -> Unit,
 ) {
-    Box(Modifier.fillMaxWidth()) {
+    /*
+     * Панель прижата к самому низу экрана, а отступ под системную
+     * навигацию — ВНУТРИ её фона.
+     *
+     * Раньше `navigationBarsPadding()` висел на контейнере снаружи: фон
+     * панели поднимался над системной полосой, и в щели под ним
+     * просвечивал контент экрана — на устройстве это выглядело так,
+     * будто панель уехала вверх.
+     */
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(Aurora.SurfaceContainer)
+            .navigationBarsPadding(),
+    ) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .height(72.dp)
-                .background(Aurora.SurfaceContainer)
                 .border(1.dp, Aurora.Brd)
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -58,7 +71,7 @@ fun TabBar(
             TabItem(TakamiIcon.Calendar, "Календарь", active == Tab.Calendar, Modifier.weight(1f), badge = calendarBadge) { onSelect(Tab.Calendar) }
             TabItem(TakamiIcon.Settings, "Настройки", active == Tab.Settings, Modifier.weight(1f)) { onSelect(Tab.Settings) }
         }
-        Fab(fabLoading, Modifier.align(Alignment.TopCenter).offset(y = (-30).dp), onFab)
+        Fab(fabLoading, Modifier.align(Alignment.TopCenter).offset(y = (-46).dp), onFab)
     }
 }
 
@@ -111,9 +124,33 @@ private fun TabItem(
     }
 }
 
+/**
+ * Центральная кнопка «Свайпы».
+ *
+ * 76dp вместо 64: на устройстве кнопка читалась мелко относительно
+ * таббара. В покое — не пульсация (она выглядит как вечная загрузка), а
+ * медленное дыхание ореола и наклон карточки: намёк на жест свайпа,
+ * которым и открывается экран.
+ */
 @Composable
 private fun Fab(loading: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val t = rememberInfiniteTransition(label = "fab")
+
+    // Ореол: расходящееся кольцо, 2.4s. Достаточно медленно, чтобы не
+    // мозолить глаз в покое.
+    val halo by t.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween(2400, easing = androidx.compose.animation.core.LinearEasing),
+        ),
+        label = "halo",
+    )
+    // Наклон иконки: имитация карточки, которую отводят в сторону.
+    val tilt by t.animateFloat(
+        initialValue = -7f, targetValue = 7f,
+        animationSpec = infiniteRepeatable(tween(1900, easing = Aurora.Ease), RepeatMode.Reverse),
+        label = "tilt",
+    )
     val pulse by t.animateFloat(
         initialValue = 1f, targetValue = 1.08f,
         animationSpec = infiniteRepeatable(tween(550, easing = Aurora.Ease), RepeatMode.Reverse),
@@ -125,27 +162,40 @@ private fun Fab(loading: Boolean, modifier: Modifier = Modifier, onClick: () -> 
         label = "spin",
     )
 
-    Box(
-        modifier
-            // 64dp вместо 56: на устройстве кнопка читалась мелкой
-            // относительно таббара и попасть по ней было неудобно.
-            .size(64.dp)
-            .scale(if (loading) pulse else 1f)
-            .clip(RoundedCornerShape(Aurora.RadiusFull))
-            .background(Aurora.AccentGradient)
-            .border(6.dp, Aurora.SurfaceContainer, RoundedCornerShape(Aurora.RadiusFull))
-            .clickable(enabled = !loading, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (loading) {
-            Canvas(Modifier.size(29.dp).rotate(spin)) {
-                drawArc(
-                    color = Color.White, startAngle = 0f, sweepAngle = 228f, useCenter = false,
-                    style = Stroke(2.6.dp.toPx(), cap = StrokeCap.Round),
+    Box(modifier.size(96.dp), contentAlignment = Alignment.Center) {
+        // Ореол рисуем ПОД кнопкой и вне её границ, поэтому внешний Box
+        // больше самой кнопки — иначе кольцо обрезалось бы по краю.
+        if (!loading) {
+            Canvas(Modifier.size(96.dp)) {
+                val ring = size.minDimension / 2f
+                drawCircle(
+                    color = Aurora.Acc.copy(alpha = (1f - halo) * 0.30f),
+                    radius = ring * (0.62f + halo * 0.38f),
+                    style = Stroke(2.dp.toPx()),
                 )
             }
-        } else {
-            Icon(TakamiIcon.Swipes, Modifier.size(27.dp), Color.White)
+        }
+
+        Box(
+            Modifier
+                .size(76.dp)
+                .scale(if (loading) pulse else 1f)
+                .clip(RoundedCornerShape(Aurora.RadiusFull))
+                .background(Aurora.AccentGradient)
+                .border(6.dp, Aurora.SurfaceContainer, RoundedCornerShape(Aurora.RadiusFull))
+                .clickable(enabled = !loading, onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (loading) {
+                Canvas(Modifier.size(34.dp).rotate(spin)) {
+                    drawArc(
+                        color = Color.White, startAngle = 0f, sweepAngle = 228f, useCenter = false,
+                        style = Stroke(2.6.dp.toPx(), cap = StrokeCap.Round),
+                    )
+                }
+            } else {
+                Icon(TakamiIcon.Swipes, Modifier.size(32.dp).rotate(tilt), Color.White)
+            }
         }
     }
 }

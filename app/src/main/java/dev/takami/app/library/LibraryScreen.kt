@@ -1,6 +1,8 @@
 package dev.takami.app.library
 
 import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -25,6 +27,7 @@ import dev.takami.app.ui.components.Pill
 import dev.takami.app.ui.components.TakamiIcon
 import dev.takami.app.ui.theme.Aurora
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -36,19 +39,59 @@ import kotlinx.coroutines.withContext
 @Composable
 fun LibraryScreen() {
     val context = LocalContext.current
+    val folder = remember { LibraryFolder(context) }
+
     var titles by remember { mutableStateOf<List<LocalLibrary.Title>>(emptyList()) }
     var openedTitle by remember { mutableStateOf<LocalLibrary.Title?>(null) }
     var scanned by remember { mutableStateOf(false) }
+    var importing by remember { mutableStateOf(false) }
+    var report by remember { mutableStateOf<String?>(null) }
+    var rescan by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(rescan) {
+        /*
+         * Папку можно выбрать и в настройках — тогда импорт ещё не
+         * запускался. Прогоняем его при открытии вкладки: повторное
+         * копирование дешёвое, уже перенесённые файлы пропускаются по
+         * размеру.
+         */
+        if (folder.isUsable()) {
+            withContext(Dispatchers.IO) { LibraryImport.run(context, folder) }
+        }
         titles = withContext(Dispatchers.IO) { LocalLibrary.titles(context) }
         scanned = true
+    }
+
+    val scope = rememberCoroutineScope()
+    val pick = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data ?: return@rememberLauncherForActivityResult
+        folder.remember(uri)
+        importing = true
+        scope.launch {
+            val res = withContext(Dispatchers.IO) { LibraryImport.run(context, folder) }
+            importing = false
+            report = when {
+                res.files == 0 ->
+                    "В выбранной папке не нашлось глав. Ожидается «Название/Глава/0001.jpg» или «Название/Глава.cbz»."
+                res.skipped > 0 ->
+                    "Добавлено: тайтлов ${res.titles}, глав ${res.chapters}. Пропущено файлов: ${res.skipped}."
+                else -> "Добавлено: тайтлов ${res.titles}, глав ${res.chapters}."
+            }
+            rescan++
+        }
     }
 
     val title = openedTitle
     when {
         title != null -> ChapterList(title, onBack = { openedTitle = null })
-        titles.isEmpty() && scanned -> EmptyLibrary(LocalLibrary.rootDir(context).absolutePath)
+        titles.isEmpty() && scanned -> EmptyLibrary(
+            folderName = folder.displayName().takeIf { folder.isUsable() },
+            importing = importing,
+            report = report,
+            onPick = { pick.launch(folder.pickIntent()) },
+        )
         else -> TitleList(titles) { openedTitle = it }
     }
 }
@@ -168,7 +211,12 @@ private fun ChapterProgressLabel(progress: ReadingProgressStore, chapterId: Stri
 }
 
 @Composable
-private fun EmptyLibrary(path: String) {
+private fun EmptyLibrary(
+    folderName: String?,
+    importing: Boolean,
+    report: String?,
+    onPick: () -> Unit,
+) {
     Column(
         Modifier.fillMaxSize().background(Aurora.Surface).padding(24.dp),
         verticalArrangement = Arrangement.Center,
@@ -179,13 +227,36 @@ private fun EmptyLibrary(path: String) {
         Text("Библиотека пуста", color = Aurora.OnSurface, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Читалка работает с локальными главами: папка со страницами или CBZ. " +
-                "Положите главы в $path — онлайн-источники подключатся сюда же, когда приедет парсер.",
+            report ?: if (folderName != null) {
+                "Папка «$folderName» выбрана, но глав в ней не нашлось. " +
+                    "Ожидается «Название/Глава/0001.jpg» или «Название/Глава.cbz»."
+            } else {
+                "Выберите папку с главами на телефоне или карте памяти: " +
+                    "«Название/Глава/0001.jpg» либо «Название/Глава.cbz». " +
+                    "Онлайн-источники подключатся сюда же."
+            },
             color = Aurora.OnSurfaceVariant,
             fontSize = 13.sp,
             lineHeight = 20.sp,
             textAlign = TextAlign.Center,
         )
+        Spacer(Modifier.height(20.dp))
+        Box(
+            Modifier
+                .clip(RoundedCornerShape(Aurora.RadiusFull))
+                .background(Aurora.AccentGradient)
+                .clickable(enabled = !importing, onClick = onPick)
+                .padding(horizontal = 22.dp, vertical = 13.dp)
+        ) {
+            Text(
+                if (importing) "Копирую главы…"
+                else if (folderName != null) "Выбрать другую папку"
+                else "Выбрать папку",
+                color = Aurora.OnSurface,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 
