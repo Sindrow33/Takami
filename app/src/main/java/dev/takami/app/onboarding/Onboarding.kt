@@ -467,7 +467,7 @@ private fun WelcomeScreen(onDone: () -> Unit) {
         Column(
             Modifier
                 .align(Alignment.TopStart)
-                .padding(top = 172.dp, start = 20.dp)
+                .padding(top = 210.dp, start = 20.dp)
                 .widthIn(max = 190.dp)
                 .scale(1f + bubbleWiggle * 0.004f)
                 .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 4.dp, bottomStart = 20.dp))
