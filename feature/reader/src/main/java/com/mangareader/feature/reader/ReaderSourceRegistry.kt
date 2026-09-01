@@ -2,6 +2,7 @@ package com.mangareader.feature.reader
 
 import com.mangareader.core.model.ChapterInfo
 import com.mangareader.core.model.MangaPageSource
+import com.mangareader.reader.engine.settings.ReaderSettingsStore
 
 /**
  * Минимальный DI-заменитель на время интеграции: хост регистрирует
@@ -18,6 +19,13 @@ object ReaderSourceRegistry {
     val eventBus: ReaderEventBus = ReaderEventBus()
 
     val reader: MangaReaderHandle by lazy { MangaReaderHandle(MangaReaderImpl(eventBus)) }
+
+    /**
+     * Хранилище настроек чтения. Ставится хостом один раз при старте;
+     * пока не поставлено, настройки живут только в памяти сессии.
+     */
+    @Volatile
+    var settingsStore: ReaderSettingsStore = ReaderSettingsStore.None
 
     private val sources = LinkedHashMap<String, MangaPageSource>()
     private val chapterLookups = LinkedHashMap<String, suspend (String) -> ChapterInfo>()

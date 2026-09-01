@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mangareader.core.model.ReaderParams
 import com.mangareader.feature.reader.ReaderSourceRegistry
+import dev.takami.app.data.ReadingProgressStore
 import dev.takami.app.ui.components.Icon
 import dev.takami.app.ui.components.Pill
 import dev.takami.app.ui.components.TakamiIcon
@@ -97,6 +98,7 @@ private fun TitleList(titles: List<LocalLibrary.Title>, onOpen: (LocalLibrary.Ti
 @Composable
 private fun ChapterList(title: LocalLibrary.Title, onBack: () -> Unit) {
     val context = LocalContext.current
+    val progress = remember { ReadingProgressStore(context) }
     LazyColumn(
         Modifier.fillMaxSize().background(Aurora.Surface),
         contentPadding = PaddingValues(20.dp, 20.dp, 20.dp, 96.dp),
@@ -124,7 +126,10 @@ private fun ChapterList(title: LocalLibrary.Title, onBack: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(chapter.name, color = Aurora.OnSurface, fontSize = 14.sp)
+                Column(Modifier.weight(1f)) {
+                    Text(chapter.name, color = Aurora.OnSurface, fontSize = 14.sp)
+                    ChapterProgressLabel(progress, chapter.id)
+                }
                 Text(
                     if (chapter.isArchive) "CBZ" else "папка",
                     color = Aurora.OnSurfaceVariant,
@@ -132,6 +137,33 @@ private fun ChapterList(title: LocalLibrary.Title, onBack: () -> Unit) {
                 )
             }
         }
+    }
+}
+
+/**
+ * Подпись о прогрессе главы. Прочитанная и начатая выглядят по-разному,
+ * непрочитанная не занимает места — иначе список превращается в стену
+ * одинаковых строк.
+ */
+@Composable
+private fun ChapterProgressLabel(progress: ReadingProgressStore, chapterId: String) {
+    val done = progress.isCompleted(chapterId)
+    val page = progress.page(chapterId)
+    val total = progress.total(chapterId)
+
+    when {
+        done -> Text(
+            "прочитано",
+            color = Aurora.Ok,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        page > 0 -> Text(
+            if (total > 0) "остановились на ${page + 1} из $total" else "остановились на ${page + 1}",
+            color = Aurora.Acc2,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(top = 2.dp),
+        )
     }
 }
 
@@ -166,12 +198,17 @@ private fun openReader(context: Context, title: LocalLibrary.Title, chapter: Loc
             chapterLookup = LocalLibrary.chapterLookup(title),
         )
     }
+    // Продолжаем с сохранённой страницы: прогресс пишется на каждой
+    // странице, но до этого места не доезжал — глава всегда
+    // открывалась с начала.
+    val startPage = ReadingProgressStore(context).page(chapter.id)
+
     val intent = ReaderSourceRegistry.reader.open(
         context,
         ReaderParams(
             mangaId = title.id,
             chapterId = chapter.id,
-            startPage = 0,
+            startPage = startPage,
             sourceId = sourceId,
         ),
     )

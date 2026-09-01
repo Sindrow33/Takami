@@ -16,6 +16,7 @@ import com.mangareader.reader.engine.feed.FeedEvent
 import com.mangareader.reader.engine.layout.FeedItem
 import com.mangareader.reader.engine.layout.PageState
 import com.mangareader.reader.engine.settings.ReaderSettings
+import com.mangareader.reader.engine.settings.ReaderSettingsStore
 import com.mangareader.translate.api.TranslationMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,6 +67,8 @@ class ReaderViewModel(
     private val source: MangaPageSource,
     private val chapterLookup: suspend (String) -> ChapterInfo,
     private val eventBus: ReaderEventBus,
+    private val settingsStore: ReaderSettingsStore = ReaderSettingsStore.None,
+    private val seriesId: String = "",
 ) : ViewModel() {
 
     private val feed = FeedController(
@@ -86,6 +89,9 @@ class ReaderViewModel(
     private var startPageRequested = 0
 
     init {
+        if (seriesId.isNotEmpty()) {
+            _state.value = _state.value.copy(settings = settingsStore.load(seriesId))
+        }
         viewModelScope.launch {
             feed.state.collect { feedState ->
                 val current = feedState.currentChapterId
@@ -136,7 +142,18 @@ class ReaderViewModel(
                         ReaderEvent.Failure(FailureKind.CHAPTER_LOAD, t.message ?: t.toString())
                     )
                 }
-            ensureWindowDecoded(indexOfPage(chapterId, startPage))
+            // Позиция открытия: элемент ленты со стартовой страницей.
+            // До этой правки startPage записывался и не читался — глава
+            // всегда открывалась с первой страницы, а сохранённый
+            // прогресс никуда не применялся.
+            val startIndex = indexOfPage(chapterId, startPage)
+            ensureWindowDecoded(startIndex)
+            if (startPage > 0) {
+                _state.value = _state.value.copy(
+                    pendingScrollIndex = startIndex,
+                    currentPage = startPage,
+                )
+            }
         }
     }
 
@@ -175,7 +192,11 @@ class ReaderViewModel(
     }
 
     fun updateSettings(transform: (ReaderSettings) -> ReaderSettings) {
-        _state.value = _state.value.copy(settings = transform(_state.value.settings))
+        val updated = transform(_state.value.settings)
+        _state.value = _state.value.copy(settings = updated)
+        // Сохраняем сразу: пользователь меняет режим чтения один раз и
+        // ждёт, что он останется. Запись редкая, поэтому не батчим.
+        if (seriesId.isNotEmpty()) settingsStore.save(seriesId, updated)
     }
 
     /**
@@ -307,9 +328,11 @@ class ReaderViewModel(
         private val source: MangaPageSource,
         private val chapterLookup: suspend (String) -> ChapterInfo,
         private val eventBus: ReaderEventBus,
+        private val settingsStore: ReaderSettingsStore = ReaderSettingsStore.None,
+        private val seriesId: String = "",
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            ReaderViewModel(source, chapterLookup, eventBus) as T
+            ReaderViewModel(source, chapterLookup, eventBus, settingsStore, seriesId) as T
     }
 }

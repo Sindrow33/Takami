@@ -4,6 +4,7 @@ import android.app.Application
 import com.mangareader.core.model.ReaderEvent
 import com.mangareader.feature.reader.ReaderSourceRegistry
 import dev.takami.app.data.ReadingProgressStore
+import dev.takami.app.library.ReaderPrefsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,6 +27,9 @@ class TakamiApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         progress = ReadingProgressStore(this)
+        // Настройки чтения переживают закрытие читалки: движок знает
+        // только интерфейс, реализацию подставляет приложение.
+        ReaderSourceRegistry.settingsStore = ReaderPrefsStore(this)
 
         appScope.launch {
             ReaderSourceRegistry.eventBus.events.collect { event ->

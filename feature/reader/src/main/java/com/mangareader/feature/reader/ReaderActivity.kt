@@ -48,6 +48,7 @@ class ReaderActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         applyImmersiveMode()
+        val mangaId = intent.getStringExtra(EXTRA_MANGA_ID).orEmpty()
         val chapterId = intent.getStringExtra(EXTRA_CHAPTER_ID).orEmpty()
         val startPage = intent.getIntExtra(EXTRA_START_PAGE, 0)
         val sourceId = intent.getStringExtra(EXTRA_SOURCE_ID).orEmpty()
@@ -64,7 +65,13 @@ class ReaderActivity : ComponentActivity() {
 
         val viewModel = ViewModelProvider(
             this,
-            ReaderViewModel.Factory(source, chapterLookup, ReaderSourceRegistry.eventBus),
+            ReaderViewModel.Factory(
+                source = source,
+                chapterLookup = chapterLookup,
+                eventBus = ReaderSourceRegistry.eventBus,
+                settingsStore = ReaderSourceRegistry.settingsStore,
+                seriesId = mangaId,
+            ),
         )[ReaderViewModel::class.java]
         viewModel.open(chapterId, startPage)
 
