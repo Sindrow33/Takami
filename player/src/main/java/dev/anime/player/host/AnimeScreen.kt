@@ -39,6 +39,9 @@ import dev.anime.player.ui.PlayerScreen
 import dev.anime.player.ui.formatTime
 import dev.takami.app.ui.theme.Aurora
 import java.io.File
+import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Экран вкладки «Аниме» — единственная точка входа модуля `:player` в приложение.
@@ -54,26 +57,48 @@ import java.io.File
 fun AnimeScreen(
     modifier: Modifier = Modifier,
     /**
-     * Где искать локальные файлы. По умолчанию — внутренний `filesDir`, но с телефона
-     * он недоступен, поэтому хост передаёт сюда папку, выбранную пользователем.
+     * Папка, выбранная пользователем через системный диалог (`content://`).
+     * Основной способ: внутренний каталог с телефона недоступен, положить
+     * туда файлы нельзя. Media3 играет документы напрямую, копирование в кеш
+     * не нужно.
      */
+    contentTree: Uri? = null,
+    /** Запасной путь на диске; используется, когда папка не выбрана. */
     contentRoot: File? = null,
 ) {
     val context = LocalContext.current
     val progress = remember { WatchProgressStore(context) }
     val root = contentRoot ?: context.filesDir
 
-    val titles = remember(root.absolutePath) {
-        AnimeCatalog.scan(root) + AnimeCatalog.demoStreams()
+    // Обход каталога — дисковый ввод-вывод, держим его вне главного потока:
+    // на выбранной папке это ещё и запросы к content-провайдеру.
+    var scanned by remember { mutableStateOf<List<AnimeCatalog.Title>?>(null) }
+    LaunchedEffect(contentTree, root.absolutePath) {
+        scanned = withContext(Dispatchers.IO) {
+            val local = if (contentTree != null) {
+                AnimeCatalog.scanTree(context, contentTree)
+            } else {
+                AnimeCatalog.scan(root)
+            }
+            local + AnimeCatalog.demoStreams()
+        }
     }
+    val titles = scanned
     var playing by remember { mutableStateOf<AnimeCatalog.Episode?>(null) }
     // Перечитываем прогресс после выхода из плеера, чтобы список сразу показал новую метку.
     var progressStamp by remember { mutableStateOf(0) }
 
     val episode = playing
-    if (episode == null) {
+    if (titles == null) {
+        Box(modifier.fillMaxSize().background(Aurora.Surface))
+    } else if (episode == null) {
         EpisodeList(
             titles = titles,
+            hint = if (contentTree != null) {
+                "Файлы из выбранной папки. Каталог из сети подключается отдельно."
+            } else {
+                "Папка не выбрана — в Настройках укажите папку с файлами. Ниже только тестовые потоки."
+            },
             modifier = modifier,
             positionOf = { id -> progressStamp; progress.position(id) },
             durationOf = { id -> progress.duration(id) },
@@ -147,6 +172,7 @@ private fun EpisodePlayer(
 @Composable
 private fun EpisodeList(
     titles: List<AnimeCatalog.Title>,
+    hint: String,
     modifier: Modifier,
     positionOf: (String) -> Long,
     durationOf: (String) -> Long,
@@ -163,7 +189,7 @@ private fun EpisodeList(
             Text("Аниме", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Файлы из папки anime в выбранной папке контента. Каталог из сети подключается отдельно.",
+                hint,
                 color = Aurora.OnSurfaceVariant,
                 fontSize = 13.sp,
                 lineHeight = 19.sp,

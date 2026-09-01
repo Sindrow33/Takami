@@ -8,6 +8,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -27,8 +28,18 @@ class Media3Engine(context: Context) : PlayerEngine {
         .setConnectTimeoutMs(15000)
         .setReadTimeoutMs(15000)
 
+    /**
+     * Важно: фабрика именно [DefaultDataSource.Factory], а не сама HTTP-фабрика.
+     * С одной HTTP-фабрикой движок умел только `http(s)://` — локальный файл и
+     * документ из выбранной пользователем папки (`file://`, `content://`)
+     * не открывались вообще. `DefaultDataSource` выбирает источник по схеме и
+     * для сети использует переданную HTTP-фабрику, так что заголовки и таймауты
+     * для потоков сохраняются.
+     */
+    private val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+
     private val exo: ExoPlayer = ExoPlayer.Builder(context)
-        .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
+        .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
         .build()
         .apply {
             addListener(object : Player.Listener {

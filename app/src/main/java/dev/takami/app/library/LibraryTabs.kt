@@ -58,12 +58,15 @@ fun LibraryTabs() {
         when (kind) {
             Kind.Manga -> LibraryScreen()
             /*
-             * Плееру нужен путь на диске, поэтому сюда идёт только
-             * внутренний каталог: у папки, выбранной через системный
-             * диалог, пути для File может не быть вовсе. Когда плеер
-             * научится читать content://, здесь встанет выбранная папка.
+             * Плеер читает выбранную папку через content:// напрямую —
+             * серию копировать нельзя, это сотни мегабайт на просмотр.
+             * Внутренний каталог остаётся запасным путём, когда папка
+             * не выбрана.
              */
-            Kind.Anime -> AnimeScreen(contentRoot = root.internalDir())
+            Kind.Anime -> AnimeScreen(
+                contentTree = root.selectedTree(),
+                contentRoot = root.internalDir(),
+            )
         }
     }
 }
