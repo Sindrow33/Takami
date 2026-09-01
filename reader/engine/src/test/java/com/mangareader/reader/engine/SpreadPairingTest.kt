@@ -65,7 +65,8 @@ class SpreadPairingTest {
     fun `нечётный хвост главы не теряется`() {
         val spreads = SpreadPairing.pair(List(3) { page() })
         assertEquals(listOf(Spread(0, 1), Spread(2, null)), spreads)
-        val pagesShown: Int = spreads.sumOf { spread -> if (spread.second == null) 1 else 2 }
+        var pagesShown = 0
+        for (spread in spreads) pagesShown += if (spread.second == null) 1 else 2
         assertEquals(3, pagesShown, "ни одна страница не должна пропасть при разбиении")
     }
 
