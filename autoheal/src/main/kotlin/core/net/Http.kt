@@ -88,6 +88,26 @@ interface HttpClient {
     /** Только заголовки — узнать размер и тип, не скачивая тело. */
     suspend fun head(url: String, headers: Map<String, String> = defaultHeaders()): HttpResponse
 
+    /**
+     * Бинарная загрузка потоком в [sink].
+     *
+     * Отдельный метод, а не `get()`: `HttpResponse.body` — это `String`,
+     * декодированная по charset ответа. Для HTML это правильно, для
+     * картинки — необратимая порча байт (любая последовательность, не
+     * являющаяся валидным UTF-8, схлопывается в U+FFFD). Плюс `get()`
+     * держит всё тело в памяти и режет по `maxBodyBytes`, а страница
+     * манги штатно бывает больше.
+     *
+     * Возвращает число записанных байт. Ретраи и вежливость к хосту —
+     * те же, что у остальных запросов.
+     */
+    suspend fun download(
+        url: String,
+        headers: Map<String, String> = defaultHeaders(),
+        sink: java.io.OutputStream,
+        onProgress: (bytes: Long, total: Long?) -> Unit = { _, _ -> },
+    ): Long
+
     fun cookiesFor(host: String): List<String>
     suspend fun clearCookies(host: String)
 }
@@ -295,6 +315,77 @@ class OkHttpClientAdapter(
         val builder = Request.Builder().url(url)
         for ((k, v) in headers) if (v.isNotBlank()) builder.header(k, v)
         return builder
+    }
+
+    override suspend fun download(
+        url: String,
+        headers: Map<String, String>,
+        sink: java.io.OutputStream,
+        onProgress: (bytes: Long, total: Long?) -> Unit,
+    ): Long = withContext(Dispatchers.IO) {
+        val request = buildRequest(url, headers).build()
+        val host = request.url.host
+        var attempt = 0
+        var lastError: HttpError? = null
+        /*
+         * Ретрай допустим только пока в sink не ушло ни байта: поток
+         * отдан наружу, отмотать его назад нельзя, и повторная попытка
+         * дописала бы файл во второй раз — получился бы «успешно
+         * загруженный» битый файл вдвое длиннее.
+         */
+        var dirty = false
+
+        while (attempt <= maxRetries) {
+            attempt++
+            limiter.acquire(host)
+            try {
+                val response = client.newCall(request).await()
+                response.use { r ->
+                    if (r.code == 429 || r.code == 503) {
+                        val retryAfter = parseRetryAfter(r.header("Retry-After"))
+                        limiter.penalize(host, retryAfter ?: DEFAULT_PENALTY)
+                        throw HttpError.RateLimited(retryAfter)
+                    }
+                    if (r.code !in 200..299) {
+                        throw HttpError.BadStatus(r.code, "")
+                    }
+                    val body = r.body ?: throw HttpError.Unknown(null)
+                    val total = body.contentLength().takeIf { it >= 0 }
+                    val stream = body.byteStream()
+                    val buffer = ByteArray(64 * 1024)
+                    var written = 0L
+                    while (true) {
+                        val read = stream.read(buffer)
+                        if (read < 0) break
+                        dirty = true
+                        sink.write(buffer, 0, read)
+                        written += read
+                        onProgress(written, total)
+                    }
+                    sink.flush()
+                    /*
+                     * Обрыв на середине даёт короткий файл без всякой
+                     * ошибки — единственный признак, что байт меньше, чем
+                     * обещал Content-Length. Не проверив, отдадим читалке
+                     * половину страницы как готовую, и она уйдёт в кеш.
+                     */
+                    if (total != null && written != total) {
+                        throw HttpError.Unknown(
+                            IOException("загрузка обрывалась: $written из $total байт")
+                        )
+                    }
+                    return@withContext written
+                }
+            } catch (e: Throwable) {
+                val mapped = mapError(e, host)
+                lastError = mapped
+                if (dirty || !mapped.isTransient || attempt > maxRetries) throw mapped
+                delay(backoffMillis(attempt))
+            } finally {
+                limiter.release(host)
+            }
+        }
+        throw lastError ?: HttpError.Unknown(null)
     }
 
     private suspend fun execute(request: Request, allowNotModified: Boolean = false): HttpResponse {

@@ -62,12 +62,22 @@ class HttpPageFetcher(
         part.delete()
 
         val merged = client.browserHeaders(referer = headers["Referer"]) + headers
-        val response = client.get(url, merged)
-        if (!response.isSuccess) throw PageSourceException("HTTP ${response.code} при загрузке страницы")
 
-        val bytes = response.body.toByteArray(Charsets.ISO_8859_1)
-        part.writeBytes(bytes)
-        onProgress(bytes.size.toLong(), bytes.size.toLong())
+        /*
+         * Именно `client.download`, а не `get`: `HttpResponse.body` —
+         * это String, декодированная по charset ответа, и картинка
+         * через неё портится необратимо. Плюс поток не держит всё тело
+         * в памяти и не режется по maxBodyBytes.
+         */
+        try {
+            part.outputStream().buffered().use { out ->
+                client.download(url, merged, out, onProgress)
+            }
+        } catch (e: Throwable) {
+            part.delete()   // битый огрызок не должен дожить до renameTo
+            throw if (e is PageSourceException) e
+            else PageSourceException("не удалось загрузить страницу: ${e.message}", e)
+        }
 
         if (!part.renameTo(target)) {
             part.copyTo(target, overwrite = true)
