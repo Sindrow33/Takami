@@ -12,6 +12,7 @@
         android:maxSdkVersion="28" />
 
     <application
+        android:name=".TakamiApplication"
         android:label="Takami"
         android:supportsRtl="true"
         android:theme="@style/Theme.Takami">

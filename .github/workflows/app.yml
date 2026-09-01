@@ -2,7 +2,7 @@ name: app
 
 on:
   push:
-    branches: [ main, app-shell-v4 ]
+    branches: [ main, app-shell-v4, reader-integration ]
   pull_request:
   workflow_dispatch:
 
@@ -21,6 +21,10 @@ jobs:
           gradle-version: '8.11.1'
       - name: Autoheal unit tests
         run: gradle :autoheal:test --no-daemon --stacktrace
+      - name: Reader unit tests
+        run: gradle :reader:engine:testDebugUnitTest --no-daemon --stacktrace
+      - name: Reader modules assemble
+        run: gradle :feature:reader:assembleDebug :reader:ui:assembleDebug :core:design:assembleDebug --no-daemon --stacktrace
       - name: App unit tests
         run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
       - name: Build Takami APK
@@ -33,6 +37,7 @@ jobs:
           path: |
             autoheal/build/reports/tests/test
             app/build/reports/tests/**
+            reader/engine/build/reports/tests/**
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
