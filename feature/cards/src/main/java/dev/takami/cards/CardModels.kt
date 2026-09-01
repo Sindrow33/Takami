@@ -61,6 +61,16 @@ object CardText {
         ContentKind.Novel -> "Ранобэ"
     }
 
+    /**
+     * Короткая метка типа для чипа на обложке (`DB.short` в макете): в чип
+     * 24dp полное слово не влезает, а тип различать надо.
+     */
+    fun kindShort(kind: ContentKind): String = when (kind) {
+        ContentKind.Anime -> "А"
+        ContentKind.Manga -> "М"
+        ContentKind.Novel -> "Р"
+    }
+
     fun roleLabel(role: CharacterRole): String? = when (role) {
         CharacterRole.Main -> "Главный"
         CharacterRole.Supporting -> "Второстепенный"
@@ -88,6 +98,16 @@ object CardText {
             words.size == 1 -> words[0].take(2).uppercase()
             else -> (words[0].take(1) + words[1].take(1)).uppercase()
         }
+    }
+
+    /**
+     * Один символ-глиф для обложки персонажа (`.c-glyph` в макете): в макете
+     * это `c.n.charAt(0)`, то есть ровно первая буква имени, а не инициалы
+     * из двух — при кегле 58sp вторая буква не влезает в карточку 96dp.
+     */
+    fun glyph(text: String): String {
+        val first = text.trim().firstOrNull() ?: return "?"
+        return first.uppercase()
     }
 
     /**

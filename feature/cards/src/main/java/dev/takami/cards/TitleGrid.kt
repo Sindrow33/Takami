@@ -56,7 +56,10 @@ fun TitleGrid(
             TitleCard(
                 data = title,
                 loader = loader,
-                width = 104.dp,
+                // Ширину задаёт колонка сетки, а не карточка: иначе
+                // фиксированные 104dp оставляют дырку справа на планшете.
+                width = null,
+                style = TitleCardStyle.Grid,
                 onClick = onOpen?.let { open -> { open(title) } },
             )
         }
@@ -70,18 +73,20 @@ fun TitleRail(
     titles: List<TitleCardData>,
     modifier: Modifier = Modifier,
     loader: ImageLoader? = null,
+    subtitle: String? = null,
     onOpen: ((TitleCardData) -> Unit)? = null,
+    onOpenAll: (() -> Unit)? = null,
 ) {
     // Пустой ряд не рисуем совсем: заголовок подборки без содержимого
     // выглядит как сломанная загрузка.
     if (titles.isEmpty()) return
     Column(modifier.fillMaxWidth()) {
-        Text(
-            title,
-            color = Color.White,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 16.dp),
+        SectionHead(
+            title = title,
+            subtitle = subtitle,
+            // «Все ›» из макета — только когда есть куда вести.
+            action = if (onOpenAll != null) "Все ›" else null,
+            onAction = onOpenAll,
         )
         Spacer(Modifier.height(10.dp))
         LazyRow(

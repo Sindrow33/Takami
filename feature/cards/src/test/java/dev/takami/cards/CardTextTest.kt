@@ -71,4 +71,23 @@ class CardTextTest {
         assertEquals(1f, CardText.clampProgress(2f), 0.001f)
         assertEquals(0f, CardText.clampProgress(-1f), 0.001f)
     }
+    @Test
+    fun glyphIsOneUppercaseCharacter() {
+        // Макет берёт ровно первую букву (`c.n.charAt(0)`), а не инициалы:
+        // при кегле 58sp вторая буква не влезает в карточку 96dp.
+        assertEquals("К", CardText.glyph("Кэнджи Ямада"))
+        assertEquals("A", CardText.glyph("akira"))
+        assertEquals("Я", CardText.glyph("  Яэ  "))
+        assertEquals("?", CardText.glyph("   "))
+        assertEquals("?", CardText.glyph(""))
+    }
+
+    @Test
+    fun kindShortIsSingleLetterPerKind() {
+        val shorts = ContentKind.values().map { CardText.kindShort(it) }
+        // Разные буквы: чип 24dp несёт только их, и совпадение сделало бы
+        // тип неразличимым.
+        assertEquals(shorts.size, shorts.toSet().size)
+        shorts.forEach { assertEquals(1, it.length) }
+    }
 }
