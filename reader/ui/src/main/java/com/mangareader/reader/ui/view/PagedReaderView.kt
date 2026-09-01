@@ -20,6 +20,7 @@ import com.mangareader.reader.engine.gesture.TapZoneScheme
 import com.mangareader.reader.engine.gesture.TapZones
 import com.mangareader.reader.engine.layout.FeedItem
 import com.mangareader.reader.engine.layout.PagedNavigator
+import com.mangareader.reader.engine.layout.SpreadPairing
 import dev.takami.app.ui.theme.Aurora
 import kotlin.math.abs
 
@@ -66,6 +67,17 @@ class PagedReaderView @JvmOverloads constructor(
     /** Направление чтения: зеркалит и жест, и боковые зоны. */
     var isRtl: Boolean = false
 
+    /**
+     * Разворот на две страницы. Включённая настройка не означает, что
+     * разворот виден: в портрете он не применяется — две страницы рядом
+     * дали бы полосу вдвое уже экрана.
+     */
+    var doubleSpreadEnabled: Boolean = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     var currentIndex: Int = 0
         private set
 
@@ -89,6 +101,30 @@ class PagedReaderView @JvmOverloads constructor(
      */
     private var offsetX = 0f
 
+    /**
+     * Действует ли разворот прямо сейчас. Пересчитывается на каждом
+     * кадре: поворот экрана меняет ответ, и отдельного уведомления об
+     * этом вьюхе не приходит.
+     */
+    private fun spreadActive(): Boolean =
+        SpreadPairing.applies(doubleSpreadEnabled, width, height)
+
+    private fun spreads(): List<SpreadPairing.Spread> = SpreadPairing.pair(
+        items.map { item ->
+            val page = item as? FeedItem.Page
+            val bitmap = page?.let { bitmapProvider?.bitmapFor(it) }
+            SpreadPairing.Slot(
+                isPage = page != null,
+                // Ширина берётся из битмапа, а не из PageRef: источник
+                // размеры отдаёт не всегда, а разворот художника надо
+                // распознать до того, как он окажется ужат вдвое.
+                isWide = bitmap != null && bitmap.width > bitmap.height,
+                chapterId = page?.chapterId,
+            )
+        },
+        rtl = isRtl,
+    )
+
     fun showIndex(globalIndex: Int) {
         if (globalIndex !in items.indices) return
         scroller.forceFinished(true)
@@ -102,7 +138,11 @@ class PagedReaderView @JvmOverloads constructor(
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), backgroundPaint)
         if (items.isEmpty() || width == 0 || height == 0) return
 
-        drawPageAt(canvas, currentIndex, offsetX)
+        if (spreadActive()) {
+            drawSpreadAt(canvas, currentIndex, offsetX)
+        } else {
+            drawPageAt(canvas, currentIndex, offsetX)
+        }
 
         /*
          * Соседняя страница подрисовывается только во время жеста, и
@@ -114,12 +154,38 @@ class PagedReaderView @JvmOverloads constructor(
             val neighbour = PagedNavigator.step(items, currentIndex, forward = incomingForward)
             if (neighbour != null) {
                 val shift = if (offsetX < 0) width.toFloat() else -width.toFloat()
-                drawPageAt(canvas, neighbour, offsetX + shift)
+                if (spreadActive()) {
+                    drawSpreadAt(canvas, neighbour, offsetX + shift)
+                } else {
+                    drawPageAt(canvas, neighbour, offsetX + shift)
+                }
             }
         }
     }
 
-    private fun drawPageAt(canvas: Canvas, index: Int, dx: Float) {
+    /**
+     * Рисует экран целиком в режиме разворота: одну или две страницы.
+     *
+     * Половина экрана на страницу, а не «сколько влезет»: иначе соседние
+     * листы разной ширины стоят с разной высотой, и линия кадра между
+     * ними ломается.
+     */
+    private fun drawSpreadAt(canvas: Canvas, index: Int, dx: Float) {
+        val all = spreads()
+        val position = SpreadPairing.spreadOf(all, index)
+        val spread = position?.let { all[it] }
+        if (spread?.second == null) {
+            drawPageAt(canvas, spread?.first ?: index, dx)
+            return
+        }
+        val half = width / 2f
+        // В RTL первая по чтению половина — правая.
+        val firstOnLeft = !isRtl
+        drawPageAt(canvas, spread.first, dx + if (firstOnLeft) 0f else half, halfWidth = true)
+        drawPageAt(canvas, spread.second, dx + if (firstOnLeft) half else 0f, halfWidth = true)
+    }
+
+    private fun drawPageAt(canvas: Canvas, index: Int, dx: Float, halfWidth: Boolean = false) {
         val item = items.getOrNull(index) ?: return
         if (item is FeedItem.EndCap) return // содержимое торца рисует Compose поверх
         val page = item as? FeedItem.Page ?: return
@@ -130,13 +196,14 @@ class PagedReaderView @JvmOverloads constructor(
          * быть видна вся, а обрезка по ширине скрыла бы низ кадра.
          * Масштаб не больше 1 — растянутый скан выглядит хуже полей.
          */
+        val slotWidth = if (halfWidth) width / 2f else width.toFloat()
         val scale = minOf(
-            width.toFloat() / bitmap.width,
+            slotWidth / bitmap.width,
             height.toFloat() / bitmap.height,
         )
         val drawW = bitmap.width * scale
         val drawH = bitmap.height * scale
-        val left = dx + (width - drawW) / 2f
+        val left = dx + (slotWidth - drawW) / 2f
         val top = (height - drawH) / 2f
         canvas.drawBitmap(
             bitmap,
@@ -226,7 +293,7 @@ class PagedReaderView @JvmOverloads constructor(
     }
 
     private fun flip(forward: Boolean) {
-        val target = PagedNavigator.step(items, currentIndex, forward)
+        val target = nextStop(forward)
         if (target == null) {
             settleBack()
             return
@@ -250,6 +317,22 @@ class PagedReaderView @JvmOverloads constructor(
         scroller.startScroll(offsetX.toInt(), 0, -offsetX.toInt(), 0, FLIP_DURATION_MS)
         postInvalidateOnAnimation()
         onViewportSettled?.invoke(currentIndex)
+    }
+
+    /**
+     * Следующая остановка листания.
+     *
+     * В режиме разворота шаг — экран, а не страница: иначе перелист с
+     * пары показывал бы ту же пару, сдвинутую на страницу, и половина
+     * листов появлялась бы дважды.
+     */
+    private fun nextStop(forward: Boolean): Int? {
+        if (!spreadActive()) return PagedNavigator.step(items, currentIndex, forward)
+        val all = spreads()
+        val position = SpreadPairing.spreadOf(all, currentIndex)
+            ?: return PagedNavigator.step(items, currentIndex, forward)
+        val next = all.getOrNull(position + if (forward) 1 else -1) ?: return null
+        return next.first
     }
 
     private fun settleBack() {
