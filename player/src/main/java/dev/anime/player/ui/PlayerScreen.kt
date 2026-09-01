@@ -69,6 +69,13 @@ fun PlayerScreen(
     modifier: Modifier = Modifier,
     title: String? = null,
     onBack: (() -> Unit)? = null,
+    /** Включена ли ИИ-озвучка; null-обработчик скрывает кнопку целиком. */
+    dubbingEnabled: Boolean = false,
+    dubbingLoading: Boolean = false,
+    onToggleDubbing: (() -> Unit)? = null,
+    /** Короткое сообщение поверх видео (результат включения озвучки, причина отказа). */
+    notice: String? = null,
+    onNoticeDismiss: () -> Unit = {},
 ) {
     val state by engine.state.collectAsState()
     val context = LocalContext.current
@@ -289,11 +296,22 @@ fun PlayerScreen(
             )
         }
 
+        if (notice != null) {
+            Notice(
+                text = notice,
+                onDismiss = onNoticeDismiss,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 140.dp),
+            )
+        }
+
         if (controlsVisible) {
             TopBar(
                 title = title,
                 speed = speed,
                 onBack = onBack,
+                dubbingEnabled = dubbingEnabled,
+                dubbingLoading = dubbingLoading,
+                onToggleDubbing = onToggleDubbing,
                 onSpeed = {
                     speed = PlayerGestures.nextSpeed(speed)
                     engine.setSpeed(speed)
@@ -415,6 +433,9 @@ private fun TopBar(
     onBack: (() -> Unit)?,
     onSpeed: () -> Unit,
     modifier: Modifier,
+    dubbingEnabled: Boolean = false,
+    dubbingLoading: Boolean = false,
+    onToggleDubbing: (() -> Unit)? = null,
 ) {
     Row(
         modifier
@@ -435,16 +456,45 @@ private fun TopBar(
             maxLines = 1,
             modifier = Modifier.weight(1f),
         )
+        if (onToggleDubbing != null) {
+            PillButton(
+                label = if (dubbingLoading) "…" else "ИИ",
+                onClick = onToggleDubbing,
+                active = dubbingEnabled,
+            )
+            Spacer(Modifier.width(8.dp))
+        }
         PillButton(PlayerGestures.speedLabel(speed), onSpeed)
     }
 }
 
 @Composable
-private fun PillButton(label: String, onClick: () -> Unit) {
+private fun Notice(text: String, onDismiss: () -> Unit, modifier: Modifier) {
+    LaunchedEffect(text) {
+        delay(5000)
+        onDismiss()
+    }
+    Box(
+        modifier
+            .padding(horizontal = 24.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.Black.copy(alpha = 0.8f))
+            .pointerInput(text) { detectTapGestures { onDismiss() } }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Text(text, color = Color.White, fontSize = 13.sp)
+    }
+}
+
+@Composable
+private fun PillButton(label: String, onClick: () -> Unit, active: Boolean = false) {
     Box(
         Modifier
             .clip(RoundedCornerShape(10.dp))
-            .background(Color.White.copy(alpha = 0.14f))
+            .background(
+                if (active) Color(0xFF7C4DFF).copy(alpha = 0.85f)
+                else Color.White.copy(alpha = 0.14f)
+            )
             .size(width = 46.dp, height = 32.dp)
             .pointerInput(label) { detectTapGestures { onClick() } },
         contentAlignment = Alignment.Center,
