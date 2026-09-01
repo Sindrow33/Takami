@@ -31,6 +31,7 @@ dependencies {
     implementation(libs.mlkit.text.recognition.korean)
 
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.core.ktx)
 }

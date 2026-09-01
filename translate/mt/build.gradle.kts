@@ -35,6 +35,7 @@ dependencies {
     implementation(libs.mlkit.translate)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
