@@ -32,9 +32,9 @@ jobs:
       - name: Source unit tests
         run: gradle :source:web:testDebugUnitTest --no-daemon --stacktrace
       - name: Anime unit tests
-        run: gradle :player:testDebugUnitTest :feature:swipes:testDebugUnitTest --no-daemon --stacktrace
+        run: gradle :player:testDebugUnitTest :feature:swipes:testDebugUnitTest :feature:cards:testDebugUnitTest --no-daemon --stacktrace
       - name: Anime modules assemble
-        run: gradle :player:assembleDebug :feature:swipes:assembleDebug --no-daemon --stacktrace
+        run: gradle :player:assembleDebug :feature:swipes:assembleDebug :feature:cards:assembleDebug --no-daemon --stacktrace
       - name: Reader modules assemble
         run: gradle :feature:reader:assembleDebug :reader:ui:assembleDebug :core:design:assembleDebug :source:web:assembleDebug --no-daemon --stacktrace
       - name: App unit tests
@@ -65,6 +65,7 @@ jobs:
             reader/engine/build/reports/tests/**
             player/build/reports/tests/**
             feature/swipes/build/reports/tests/**
+            feature/cards/build/reports/tests/**
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
