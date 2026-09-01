@@ -18,10 +18,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import dev.takami.app.ui.components.Icon
 import dev.takami.app.ui.components.Pill
+import dev.takami.app.ui.components.Tab
 import dev.takami.app.ui.components.TakamiIcon
 import dev.takami.app.ui.theme.Aurora
 import java.util.Calendar
@@ -41,6 +45,7 @@ fun HomeScreen(parserStats: ParserStats = ParserStats.EMPTY, onOpenTitle: (Int) 
         Spacer(Modifier.height(20.dp))
         QuickActions()
         Spacer(Modifier.height(24.dp))
+        NewsRail()
         Rail("Продолжить", MockDb.continueReading, onOpenTitle)
         Rail("Манга", MockDb.byType(ContentType.Manga), onOpenTitle)
         Rail("Аниме", MockDb.byType(ContentType.Anime), onOpenTitle)
@@ -67,13 +72,23 @@ private fun TopBar(parserStats: ParserStats) {
         Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).padding(end = 8.dp)) {
             Text(dateLine, color = Aurora.OnSurfaceVariant, fontSize = 11.sp, letterSpacing = 0.8.sp)
             Spacer(Modifier.height(2.dp))
-            Row {
-                Text(greetingFor(hour), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text(", Читатель", color = Aurora.OnSurfaceVariant, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            }
+            /*
+             * Одна строка с автоуменьшением. Раньше приветствие с именем
+             * жило в Row из двух Text: они переносились по отдельности и
+             * ломались на три строки, наезжая на индикатор автопарсера.
+             */
+            Text(
+                text = "${greetingFor(hour)}, Читатель",
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
+            )
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             AiIndicator(parserStats)
@@ -145,23 +160,40 @@ private fun HeroContinue(item: TitleItem, onOpen: (Int) -> Unit) {
 }
 
 @Composable
-private fun QuickActions() {
+private fun QuickActions(onGo: (Tab) -> Unit = {}) {
     val actions = listOf(
         Triple(TakamiIcon.Bell, "Обновления", "3"),
         Triple(TakamiIcon.Calendar, "Календарь", "сегодня"),
         Triple(TakamiIcon.Search, "Поиск", "по кадру"),
         Triple(TakamiIcon.Swipes, "Свайпы", "подбор"),
     )
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+    // В макете это карточки-коробки с обводкой, а не голые глифы:
+    // так они читаются как кнопки и попасть по ним проще.
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         actions.forEach { (icon, label, sub) ->
             Column(
-                Modifier.weight(1f),
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(Aurora.RadiusM))
+                    .background(Aurora.SurfaceContainer)
+                    .border(1.dp, Aurora.Brd, RoundedCornerShape(Aurora.RadiusM))
+                    .clickable { }
+                    .padding(vertical = 12.dp, horizontal = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Icon(icon, Modifier.size(22.dp), Aurora.Acc2)
-                Spacer(Modifier.height(6.dp))
-                Text(label, color = Color.White, fontSize = 11.sp)
-                Text(sub, color = Aurora.OnSurfaceVariant, fontSize = 10.sp)
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    label, color = Color.White, fontSize = 11.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    sub, color = Aurora.OnSurfaceVariant, fontSize = 10.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -171,10 +203,8 @@ private fun QuickActions() {
 private fun Rail(title: String, items: List<TitleItem>, onOpen: (Int) -> Unit) {
     if (items.isEmpty()) return
     Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
-        Text(
-            title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 16.dp, bottom = 10.dp),
-        )
+        SectionHeader(title)
+        Spacer(Modifier.height(10.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
