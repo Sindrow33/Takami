@@ -18,9 +18,9 @@ class LibraryNamesTest {
     fun `страницы без ведущих нулей идут по числу, а не по строке`() {
         val given = listOf("10.jpg", "2.jpg", "1.jpg", "21.jpg", "3.jpg")
         assertEquals(
+            "сортировка строкой ставит 10 перед 2 — глава читалась бы вперемешку",
             listOf("1.jpg", "2.jpg", "3.jpg", "10.jpg", "21.jpg"),
             LibraryNames.pageOrder(given),
-            "сортировка строкой ставит 10 перед 2 — глава читалась бы вперемешку",
         )
     }
 
@@ -29,7 +29,7 @@ class LibraryNamesTest {
         val given = listOf("cover.jpg", "1.jpg", "2.jpg")
         val ordered = LibraryNames.pageOrder(given)
         assertEquals(listOf("1.jpg", "2.jpg", "cover.jpg"), ordered)
-        assertEquals(given.size, ordered.size, "ни одна страница не должна пропасть при сортировке")
+        assertEquals("ни одна страница не должна пропасть при сортировке", given.size, ordered.size)
     }
 
     @Test
@@ -58,15 +58,15 @@ class LibraryNamesTest {
     @Test
     fun `идентификатор карты не показывается как есть`() {
         assertEquals(
+            "пользователь знает её как SD-карту, а не как 1A2B-3C4D",
             "SD-карта/Comics",
             DocumentPaths.readable("content://com.android.externalstorage.documents/tree/1A2B-3C4D%3AComics"),
-            "пользователь знает её как SD-карту, а не как 1A2B-3C4D",
         )
     }
 
     @Test
     fun `незнакомый провайдер не ломает экран`() {
         val raw = "content://com.example.cloud/documents/xyz"
-        assertEquals(raw, DocumentPaths.readable(raw), "лучше показать как есть, чем пустую строку")
+        assertEquals("лучше показать как есть, чем пустую строку", raw, DocumentPaths.readable(raw))
     }
 }
