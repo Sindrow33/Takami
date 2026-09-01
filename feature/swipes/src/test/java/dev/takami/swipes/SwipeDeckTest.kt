@@ -59,7 +59,15 @@ class SwipeMathTest {
 
 class DeckStateTest {
 
-    private val deck = DeckState(SwipeMath.demoDeck())
+    private val deck = DeckState(
+        listOf(
+            DeckCard("d1", "One", "", "Аниме"),
+            DeckCard("d2", "Two", "", "Аниме"),
+            DeckCard("d3", "Three", "", "Аниме"),
+            DeckCard("d4", "Four", "", "Манга"),
+            DeckCard("d5", "Five", "", "Манга"),
+        )
+    )
 
     @Test
     fun advancesAndRecordsChoices() {
@@ -100,5 +108,58 @@ class DeckStateTest {
         val empty = DeckState(emptyList())
         assertTrue(empty.isFinished)
         assertNull(empty.current)
+    }
+}
+
+class CoverSampleSizeTest {
+
+    @Test
+    fun keepsFullSizeWhenSourceIsSmall() {
+        assertEquals(1, CoverLoader.sampleSizeFor(400, 500))
+        assertEquals(1, CoverLoader.sampleSizeFor(500, 500))
+    }
+
+    @Test
+    fun halvesUntilItFits() {
+        assertEquals(2, CoverLoader.sampleSizeFor(1000, 500))
+        assertEquals(4, CoverLoader.sampleSizeFor(2000, 500))
+        assertEquals(8, CoverLoader.sampleSizeFor(4000, 500))
+    }
+
+    @Test
+    fun neverGoesBelowOneOnGarbageInput() {
+        assertEquals(1, CoverLoader.sampleSizeFor(0, 500))
+        assertEquals(1, CoverLoader.sampleSizeFor(1000, 0))
+        assertEquals(1, CoverLoader.sampleSizeFor(-10, -10))
+    }
+}
+
+class FilterUndecidedTest {
+
+    private val cards = listOf(
+        DeckCard("a", "A", "", "Аниме"),
+        DeckCard("b", "B", "", "Аниме"),
+        DeckCard("c", "C", "", "Манга"),
+    )
+
+    @Test
+    fun removesAlreadyDecidedCards() {
+        val left = SwipeMath.filterUndecided(cards, setOf("a", "c"))
+        assertEquals(listOf("b"), left.map { it.id })
+    }
+
+    @Test
+    fun emptyDecisionsKeepEverything() {
+        assertEquals(3, SwipeMath.filterUndecided(cards, emptySet()).size)
+    }
+
+    @Test
+    fun allDecidedGivesEmptyDeck() {
+        assertTrue(SwipeMath.filterUndecided(cards, setOf("a", "b", "c")).isEmpty())
+    }
+
+    @Test
+    fun unknownIdsAreIgnored() {
+        assertEquals(3, SwipeMath.filterUndecided(cards, setOf("zzz")).size)
     }
 }

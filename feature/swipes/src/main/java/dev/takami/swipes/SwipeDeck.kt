@@ -14,6 +14,10 @@ data class DeckCard(
     val title: String,
     val subtitle: String,
     val kind: String,
+    /** Обложка, если источник её отдал. */
+    val coverUrl: String? = null,
+    /** Ссылка на тайтл — по ней «нравится» попадает в библиотеку. */
+    val url: String? = null,
 )
 
 data class DeckState(
@@ -84,12 +88,15 @@ object SwipeMath {
         SwipeDirection.None -> 0f
     }
 
-    /** Демо-колода, пока каталога из сети нет. */
-    fun demoDeck(): List<DeckCard> = listOf(
-        DeckCard("d1", "Стальной алхимик", "24 серии · приключения", "Аниме"),
-        DeckCard("d2", "Ванпанчмен", "12 серий · комедия", "Аниме"),
-        DeckCard("d3", "Магическая битва", "24 серии · экшен", "Аниме"),
-        DeckCard("d4", "Берсерк", "364 главы · тёмное фэнтези", "Манга"),
-        DeckCard("d5", "Ви­нланд Сага", "200+ глав · историческое", "Манга"),
-    )
+    /**
+     * Колода из уже принятых решений: карточки, по которым свайп не делали.
+     *
+     * Отброшенные не возвращаются — «мимо» должно означать «мимо», иначе
+     * подбор превращается в бесконечную карусель одного и того же. Отложенные
+     * в «нравится» тоже убираем: они уже в библиотеке.
+     */
+    fun filterUndecided(
+        cards: List<DeckCard>,
+        decided: Set<String>,
+    ): List<DeckCard> = cards.filterNot { it.id in decided }
 }
