@@ -106,7 +106,9 @@ private fun MainShell(parser: ParserState) {
             }
         }
 
-        Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding()) {
+        // Отступ под системную навигацию теперь внутри TabBar: он
+        // обязан быть под фоном панели, а не поднимать её над полосой.
+        Box(Modifier.align(Alignment.BottomCenter)) {
             TabBar(
                 active = tab,
                 fabLoading = fabLoading,

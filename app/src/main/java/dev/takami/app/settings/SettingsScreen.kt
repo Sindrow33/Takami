@@ -1,5 +1,7 @@
 package dev.takami.app.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mangareader.feature.reader.ReaderSourceRegistry
 import core.engine.ParserStats
+import dev.takami.app.library.LibraryFolder
 import dev.takami.app.parser.ParserState
 import dev.takami.app.ui.theme.Aurora
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +40,19 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SettingsScreen(prefs: AppSettingsStore = AppSettingsStore(LocalContext.current)) {
     val context = LocalContext.current
+    val folder = remember { LibraryFolder(context) }
+    var folderRefresh by remember { mutableStateOf(0) }
+    val folderName = remember(folderRefresh) { folder.displayName().takeIf { folder.isUsable() } }
+
+    val pick = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data ?: return@rememberLauncherForActivityResult
+        folder.remember(uri)
+        // Импорт запускает библиотека при открытии вкладки — здесь
+        // достаточно запомнить папку и обновить подпись.
+        folderRefresh++
+    }
     var stats by remember { mutableStateOf(ParserStats.EMPTY) }
     var proxyEnabled by remember { mutableStateOf(prefs.proxyEnabled) }
     var autoHealEnabled by remember { mutableStateOf(prefs.autoHealEnabled) }
@@ -87,6 +103,25 @@ fun SettingsScreen(prefs: AppSettingsStore = AppSettingsStore(LocalContext.curre
         }
 
         Section("Хранилище") {
+            InfoRow(
+                title = "Папка с локальным контентом",
+                value = folderName ?: "не выбрана",
+            )
+            Hint(
+                "Главы читаются из выбранной вами папки на телефоне или карте памяти. " +
+                    "Без неё библиотека пуста: внутренний каталог приложения пользователю недоступен.",
+            )
+            Text(
+                if (folderName != null) "Выбрать другую папку" else "Выбрать папку",
+                color = Aurora.Acc2,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(Aurora.RadiusFull))
+                    .clickable { pick.launch(folder.pickIntent()) }
+                    .padding(vertical = 4.dp),
+            )
+            Spacer(Modifier.height(14.dp))
             InfoRow(title = "Кеш страниц", value = formatSize(cacheBytes))
             Hint(
                 "Скачанные страницы хранятся, чтобы перечитывание не тратило трафик. " +
