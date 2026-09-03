@@ -72,6 +72,7 @@ class ReaderActivity : ComponentActivity() {
                 settingsStore = ReaderSourceRegistry.settingsStore,
                 seriesId = mangaId,
                 diskCache = ReaderSourceRegistry.diskCache,
+                modelProvider = ReaderSourceRegistry.modelProvider,
             ),
         )[ReaderViewModel::class.java]
         viewModel.open(chapterId, startPage)

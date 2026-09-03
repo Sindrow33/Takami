@@ -4,6 +4,8 @@ import android.app.Application
 import com.mangareader.core.model.ReaderEvent
 import com.mangareader.feature.reader.ReaderSourceRegistry
 import com.mangareader.reader.engine.cache.DiskLruPageCache
+import com.mangareader.core.network.NetworkClients
+import com.mangareader.translate.core.model.DownloadedModelProvider
 import dev.takami.app.data.ReadingProgressStore
 import dev.takami.app.library.ReaderPrefsStore
 import dev.takami.app.settings.AppSettingsStore
@@ -40,6 +42,20 @@ class TakamiApplication : Application() {
             maxSizeBytes = AppSettingsStore(this).pageCacheLimitBytes,
         )
 
+        /*
+         * Модели перевода. Адрес загрузки пока не задан — веса в
+         * проекте отсутствуют, и провайдер честно сообщает об этом
+         * вместо того, чтобы стучаться в несуществующий URL и
+         * показывать «ошибка сети». Когда веса появятся, меняется
+         * ровно эта строка.
+         */
+        ReaderSourceRegistry.modelProvider = DownloadedModelProvider(
+            context = this,
+            httpClient = NetworkClients.base(cacheDir),
+            baseUrl = TRANSLATION_MODEL_BASE_URL,
+            scope = appScope,
+        )
+
         appScope.launch {
             ReaderSourceRegistry.eventBus.events.collect { event ->
                 when (event) {
@@ -53,5 +69,18 @@ class TakamiApplication : Application() {
                 }
             }
         }
+    }
+
+    private companion object {
+        /**
+         * Адрес, откуда качаются веса моделей.
+         *
+         * Пуст сознательно: моделей в проекте нет, и пустое значение —
+         * не «забыли заполнить», а единственное правдивое. С ним
+         * перевод показывает «недоступен», а не «ошибка сети»; всё
+         * остальное — состояния, откат режима, кнопка загрузки —
+         * работает и проверяется уже сейчас.
+         */
+        const val TRANSLATION_MODEL_BASE_URL = ""
     }
 }

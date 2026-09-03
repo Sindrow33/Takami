@@ -27,6 +27,7 @@ dependencies {
     api(project(":translate:api"))
     implementation(project(":core:model"))
     implementation(project(":core:database"))
+    implementation(project(":core:network"))
     implementation(project(":translate:mt"))
     implementation(project(":translate:ocr"))
     implementation(project(":translate:onnx"))
